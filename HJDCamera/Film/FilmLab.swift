@@ -57,7 +57,7 @@ enum FilmLab {
         switch styleName {
         case "经典自然":
             return ColorCube.apply(image) { c in
-                SIMD3(c.x^0.95, c.y^0.98, c.z^1.02)
+                SIMD3(powf(c.x,0.95), powf(c.y,0.98), powf(c.z,1.02))
             }
         case "M9经典":
             return ColorCube.apply(image) { c in
@@ -90,7 +90,7 @@ enum FilmLab {
             }
         case "中画幅":
             return ColorCube.apply(image) { c in
-                SIMD3(c.x^0.98, c.y^0.98, c.z^1.0)
+                SIMD3(powf(c.x,0.98), powf(c.y,0.98), powf(c.z,1.0))
             }
         case "电影感":
             return ColorCube.apply(image) { c in

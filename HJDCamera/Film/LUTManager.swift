@@ -109,15 +109,13 @@ final class LUTManager {
 
     private func applyIntensity(filter: CIFilter, source: CIImage,
                                 intensity: Double) -> CIImage {
-        guard intensity < 1.0 else {
+        guard intensity < 1.0, let out = filter.outputImage else {
             return filter.outputImage ?? source
         }
-        if let out = filter.outputImage {
-            return source.applyingFilter("CILerp", parameters: [
-                "inputTarget": out,
-                "inputAmount": intensity
-            ])
-        }
-        return source
+        // 用 alpha 缩放后叠在原图上，实现线性交叉混合
+        let semi = out.applyingFilter("CIColorMatrix", parameters: [
+            "inputAVector": CIVector(x: 0, y: 0, z: 0, w: intensity)
+        ])
+        return semi.composited(over: source)
     }
 }

@@ -2,6 +2,7 @@
 # Fetch all embedded AI models into the app bundle resource folder.
 # Models are MERGED into the software (final IPA contains everything);
 # they are fetched at build time only because of their large size.
+# Pure curl — no pip / huggingface_hub dependency.
 set -e
 
 MODELS_DIR="HJDCamera/Resources/Models"
@@ -16,6 +17,20 @@ download_mlmodel() {
   curl -L --retry 3 --fail -o "/tmp/$file" "$HF/$repo/resolve/main/$file"
   unzip -o "/tmp/$file" -d "$MODELS_DIR"
   rm -f "/tmp/$file"
+  rm -rf "$MODELS_DIR/__MACOSX"
+  echo "::endgroup::"
+}
+
+# Download a .mlpackage directory (explicit file tree, no pip)
+download_package() {
+  local repo="$1" pkg="$2"
+  shift 2
+  echo "::group::Download $pkg"
+  for full in "$@"; do
+    local rel="${full#$pkg/}"
+    mkdir -p "$MODELS_DIR/$pkg/$(dirname "$rel")"
+    curl -L --retry 3 --fail -o "$MODELS_DIR/$pkg/$rel" "$HF/$repo/resolve/main/$full"
+  done
   echo "::endgroup::"
 }
 
@@ -25,29 +40,16 @@ download_mlmodel "TheMurusTeam/coreml-upscaler-realesrganAnime512" "realesrganAn
 download_mlmodel "TheMurusTeam/coreml-upscaler-MPRNetDenoising" "MPRNetDenoising.mlmodel.zip"
 download_mlmodel "TheMurusTeam/coreml-upscaler-gfpgan" "gfpgan.mlmodel.zip"
 
-# 2) .mlpackage downloads (DepthPro + GFPGAN)
-python3 -m pip install -q --upgrade huggingface_hub
+# 2) DepthPro (1.9GB) — explicit file tree
+download_package "coreml-projects/DepthPro-coreml" "DepthPro.mlpackage" \
+  "DepthPro.mlpackage/Manifest.json" \
+  "DepthPro.mlpackage/Data/com.apple.CoreML/model.mlmodel" \
+  "DepthPro.mlpackage/Data/com.apple.CoreML/weights/weight.bin"
 
-download_package() {
-  local repo="$1" pkg="$2"
-  echo "::group::Download $pkg"
-  python3 - "$repo" "$pkg" <<'PY'
-import sys
-from huggingface_hub import snapshot_download
-repo, pkg = sys.argv[1], sys.argv[2]
-# whole repo (these repos contain only the package + README)
-snapshot_download(repo, local_dir="models_dl")
-PY
-  rm -rf "$MODELS_DIR/$pkg"
-  cp -R "models_dl/$pkg" "$MODELS_DIR/$pkg"
-  rm -rf models_dl
-  echo "::endgroup::"
-}
-
-# DepthPro (1.9GB)
-download_package "coreml-projects/DepthPro-coreml" "DepthPro.mlpackage"
-# GFPGAN (mlboydaisuke)
-download_package "mlboydaisuke/GFPGAN-CoreML" "GFPGAN.mlpackage"
+# 3) GFPGAN (mlboydaisuke)
+download_package "mlboydaisuke/GFPGAN-CoreML" "GFPGAN.mlpackage" \
+  "GFPGAN.mlpackage/Manifest.json" \
+  "GFPGAN.mlpackage/Data/com.apple.CoreML/model.mlmodel"
 
 echo "=== Models ready ==="
 du -sh "$MODELS_DIR"/*
