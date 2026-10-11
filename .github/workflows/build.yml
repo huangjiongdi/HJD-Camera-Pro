@@ -47,18 +47,18 @@ jobs:
           security set-keychain-settings -lut 21600 "$KEYCHAIN_PATH"
           security unlock-keychain -p "hjd123" "$KEYCHAIN_PATH"
 
-          # Decode p12 using Python (reliable cross-platform base64)
-          python3 -c "
-import base64, sys
-data = base64.b64decode(sys.argv[1])
-with open(sys.argv[2], 'wb') as f:
-    f.write(data)
-print(f'Decoded p12: {len(data)} bytes, magic: {data[:4].hex()}')
-" "$P12_BASE64" "$RUNNER_TEMP/cert.p12"
+          # Write decode script
+          cat > "$RUNNER_TEMP/decode.py" << 'PYEOF'
+          import base64, sys
+          data = base64.b64decode(sys.argv[1])
+          with open(sys.argv[2], 'wb') as f:
+              f.write(data)
+          print(f"Decoded {sys.argv[2]}: {len(data)} bytes, magic: {data[:4].hex()}")
+          PYEOF
 
-          # Verify p12 file
+          # Decode p12
+          python3 "$RUNNER_TEMP/decode.py" "$P12_BASE64" "$RUNNER_TEMP/cert.p12"
           ls -la "$RUNNER_TEMP/cert.p12"
-          file "$RUNNER_TEMP/cert.p12" || true
 
           # Import p12 into keychain
           security import "$RUNNER_TEMP/cert.p12" -P "$P12_PASSWORD" -A -f pkcs12 -k "$KEYCHAIN_PATH"
@@ -66,14 +66,7 @@ print(f'Decoded p12: {len(data)} bytes, magic: {data[:4].hex()}')
           security set-key-partition-list -S apple-tool:,apple: -s -k "hjd123" "$KEYCHAIN_PATH"
 
           # Decode provisioning profile
-          python3 -c "
-import base64, sys
-data = base64.b64decode(sys.argv[1])
-with open(sys.argv[2], 'wb') as f:
-    f.write(data)
-print(f'Decoded profile: {len(data)} bytes')
-" "$MOBILEPROVISION_BASE64" "$RUNNER_TEMP/profile.mobileprovision"
-
+          python3 "$RUNNER_TEMP/decode.py" "$MOBILEPROVISION_BASE64" "$RUNNER_TEMP/profile.mobileprovision"
           mkdir -p ~/Library/MobileDevice/Provisioning\ Profiles
           cp "$RUNNER_TEMP/profile.mobileprovision" ~/Library/MobileDevice/Provisioning\ Profiles/
 
