@@ -1,0 +1,73 @@
+name: Build HJD Camera Pro
+
+on:
+  push:
+    branches: [ main ]
+  workflow_dispatch:
+
+jobs:
+  build:
+    name: Build Unsigned IPA
+    runs-on: macos-15
+    timeout-minutes: 120
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Free disk space
+        run: |
+          echo "=== before ==="
+          df -h /
+          # remove large unused toolchains to free space
+          sudo rm -rf /Library/Developer/CoreSimulator/Profiles/Runtimes/* 2>/dev/null || true
+          echo "=== after ==="
+          df -h /
+
+      - name: Fetch embedded AI models
+        run: |
+          chmod +x ci/fetch_models.sh
+          ./ci/fetch_models.sh
+
+      - name: Show model bundle
+        run: du -sh HJDCamera/Resources/Models/*
+
+      - name: Build (unsigned)
+        run: |
+          set -e
+          xcodebuild \
+            -project HJDCamera.xcodeproj \
+            -target HJDCamera \
+            -configuration Release \
+            -sdk iphoneos \
+            -derivedDataPath build \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGN_IDENTITY="" \
+            ONLY_ACTIVE_ARCH=NO \
+            | xcpretty || true
+
+      - name: Locate app
+        id: locate
+        run: |
+          APP_PATH=$(find build/Build/Products/Release-iphoneos -maxdepth 1 -name "*.app" | head -1)
+          echo "APP_PATH=$APP_PATH"
+          echo "app_path=$APP_PATH" >> "$GITHUB_OUTPUT"
+          ls -la "$APP_PATH"
+          du -sh "$APP_PATH"
+
+      - name: Package IPA
+        run: |
+          APP_PATH="${{ steps.locate.outputs.app_path }}"
+          mkdir -p Payload
+          cp -r "$APP_PATH" Payload/
+          zip -r -q HJD_Camera_Pro.ipa Payload
+          ls -lh HJD_Camera_Pro.ipa
+
+      - name: Upload IPA
+        uses: actions/upload-artifact@v4
+        with:
+          name: HJD_Camera_Pro_Unsigned
+          path: HJD_Camera_Pro.ipa
+          retention-days: 14
+          compression-level: 0

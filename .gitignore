@@ -1,0 +1,14 @@
+# Xcode / build
+build/
+DerivedData/
+*.xcuserstate
+xcuserdata/
+
+# Embedded AI models (fetched at build time by ci/fetch_models.sh)
+HJDCamera/Resources/Models/*
+!HJDCamera/Resources/Models/.gitkeep
+
+# CI download staging
+models_dl/
+Payload/
+*.ipa
