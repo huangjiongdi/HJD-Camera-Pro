@@ -81,7 +81,7 @@ jobs:
           # Decode provisioning profile
           python3 "$RUNNER_TEMP/decode.py" "$MOBILEPROVISION_BASE64" "$RUNNER_TEMP/profile.mobileprovision"
           mkdir -p ~/Library/MobileDevice/Provisioning\ Profiles
-          cp "$RUNNER_TEMP/profile.mobileprovision" ~/Library/MobileDevice/Provisioning\ Profiles/
+          cp "$RUNNER_TEMP/profile.mobileprovision" ~/Library/MobileDevice/Provisioning\ Profiles/c2619af0-8701-4afa-b741-f09f8c8820fb.mobileprovision
 
           # Verify
           echo "=== Keychain identities ==="
@@ -99,11 +99,11 @@ jobs:
             -sdk iphoneos \
             CONFIGURATION_BUILD_DIR="$PWD/build_out" \
             CODE_SIGN_STYLE=Manual \
-            CODE_SIGN_IDENTITY="iPhone Distribution" \
-            PROVISIONING_PROFILE_SPECIFIER="" \
+            CODE_SIGN_IDENTITY="iPhone Distribution: Fangcheng Li (VVAG93HGLX)" \
+            PROVISIONING_PROFILE=c2619af0-8701-4afa-b741-f09f8c8820fb \
             DEVELOPMENT_TEAM=VVAG93HGLX \
             ONLY_ACTIVE_ARCH=NO \
-            2>&1 | tail -100
+            2>&1 | tail -150
 
       - name: Locate app
         id: locate
