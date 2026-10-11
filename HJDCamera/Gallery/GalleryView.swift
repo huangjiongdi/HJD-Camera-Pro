@@ -16,7 +16,7 @@ struct GalleryView: View {
     @State private var selectedAsset: PHAsset?
     @State private var showDetail = false
     @State private var authorized = false
-    private let columns = [GridItem(.adaptive(minimum: 100, spacing: 2))]
+    private let columns = [GridItem(.adaptive(minimum: 100), spacing: 2)]
 
     private let champagneGold = Color(red: 0.85, green: 0.75, blue: 0.55)
 

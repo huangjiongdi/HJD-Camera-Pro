@@ -103,6 +103,9 @@ final class EXIFWriter {
         if let wb = meta.whiteBalance {
             dict[kCGImagePropertyExifWhiteBalance] = wb == 0 ? 0 : 1
         }
+        if let lensModel = meta.lensModel {
+            dict[kCGImagePropertyExifLensModel] = lensModel
+        }
         let formatter = DateFormatter()
         formatter.dateFormat = "yyyy:MM:dd HH:mm:ss"
         dict[kCGImagePropertyExifDateTimeOriginal] = formatter.string(from: meta.dateTime)
@@ -111,9 +114,6 @@ final class EXIFWriter {
 
     private func tiffDictionary(from meta: EXIFMetadata) -> [CFString: Any] {
         var dict: [CFString: Any] = [:]
-        if let lens = meta.lensModel {
-            dict[kCGImagePropertyTIFFLensModel] = lens
-        }
         dict[kCGImagePropertyTIFFSoftware] = "HJD Camera Pro"
         return dict
     }

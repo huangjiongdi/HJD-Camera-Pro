@@ -51,7 +51,9 @@ final class VideoCapturePipeline: NSObject, AVCaptureFileOutputRecordingDelegate
             try device.lockForConfiguration()
             let targetFPS = Double(format.frameRate)
             if let best = DeviceCapabilityManager.shared.availableVideoFormats(for: device)
-                .first(where: { $0.videoSupportedFrameRateRanges.contains { $0.maxFrameRate >= targetFPS } }) {
+                .first(where: { fmt in
+                    fmt.videoSupportedFrameRateRanges.contains { range in range.maxFrameRate >= targetFPS }
+                }) {
                 device.activeFormat = best
                 if let range = best.videoSupportedFrameRateRanges.first(where: { $0.maxFrameRate >= targetFPS }) {
                     device.activeVideoMinFrameDuration = CMTime(value: 1, timescale: CMTimeScale(targetFPS))

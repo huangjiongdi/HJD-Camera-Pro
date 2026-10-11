@@ -193,7 +193,7 @@ struct AIModelInfo: Identifiable, Hashable {
     let license: String
     let source: String
     let recommendedDevice: String
-    let isDefault: Bool
+    var isDefault: Bool
     let canUninstall: Bool
     let usedByModes: [CaptureMode]
 }

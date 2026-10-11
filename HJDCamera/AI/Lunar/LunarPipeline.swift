@@ -66,7 +66,7 @@ final class LunarPipeline: ObservableObject {
             self.currentStage = "选择清晰帧"
             self.progress = 0.4
             let bestFrames = AIFrameSelector.shared.selectBestFrames(
-                frames, topK: qualityMode == .ultra ? 12 : 6)
+                frames, topK: qualityMode == .experimental ? 12 : 6)
 
             // Stage 5: 多帧融合
             self.currentStage = "多帧融合"

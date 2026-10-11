@@ -153,11 +153,11 @@ final class FaceExposureBalancer {
 
         // 提升阴影区域亮度
         let lifted = image.applyingFilter("CIToneCurve", parameters: [
-            kCIInputPoint0: CIVector(x: 0, y: 0.15),
-            kCIInputPoint1: CIVector(x: 0.3, y: 0.4),
-            kCIInputPoint2: CIVector(x: 0.6, y: 0.6),
-            kCIInputPoint3: CIVector(x: 0.85, y: 0.8),
-            kCIInputPoint4: CIVector(x: 1, y: 0.95)
+            "inputPoint0": CIVector(x: 0, y: 0.15),
+            "inputPoint1": CIVector(x: 0.3, y: 0.4),
+            "inputPoint2": CIVector(x: 0.6, y: 0.6),
+            "inputPoint3": CIVector(x: 0.85, y: 0.8),
+            "inputPoint4": CIVector(x: 1, y: 0.95)
         ])
 
         // 只在人物区域应用
@@ -186,11 +186,11 @@ final class HighlightRecoveryNet {
     /// 恢复高光细节。
     func recover(image: CIImage) -> RecoveryResult {
         let recovered = image.applyingFilter("CIToneCurve", parameters: [
-            kCIInputPoint0: CIVector(x: 0, y: 0),
-            kCIInputPoint1: CIVector(x: 0.5, y: 0.5),
-            kCIInputPoint2: CIVector(x: 0.8, y: 0.72),
-            kCIInputPoint3: CIVector(x: 0.95, y: 0.82),
-            kCIInputPoint4: CIVector(x: 1, y: 0.88)
+            "inputPoint0": CIVector(x: 0, y: 0),
+            "inputPoint1": CIVector(x: 0.5, y: 0.5),
+            "inputPoint2": CIVector(x: 0.8, y: 0.72),
+            "inputPoint3": CIVector(x: 0.95, y: 0.82),
+            "inputPoint4": CIVector(x: 1, y: 0.88)
         ])
         return RecoveryResult(image: recovered, highlightRecovered: 0.7)
     }

@@ -24,8 +24,8 @@ final class ArchitectureDetector {
 
     /// 检测建筑场景。
     func detect(image: CIImage) -> Detection {
-        // 直线/轮廓检测（Vision 无 VNDetectLinesRequest，使用 Contour）
-        let request = VNDetectContourRequest()
+        // 直线/轮廓检测（Vision 无 VNDetectLinesRequest，使用 Contours）
+        let request = VNDetectContoursRequest()
         let handler = VNImageRequestHandler(ciImage: image, options: [:])
         var lineCount = 0
         do {

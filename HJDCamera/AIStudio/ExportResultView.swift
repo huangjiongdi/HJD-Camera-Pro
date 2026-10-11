@@ -10,7 +10,7 @@ import SwiftUI
 import Photos
 
 struct ExportResultView: View {
-    let image: UIImage
+    let image: UIImage?
     let assessment: QualityAssessment?
     @Environment(\.dismiss) private var dismiss
     @State private var saved = false
@@ -24,12 +24,24 @@ struct ExportResultView: View {
 
             ScrollView {
                 VStack(spacing: 20) {
-                    // Result image
-                    Image(uiImage: image)
-                        .resizable()
-                        .scaledToFit()
-                        .cornerRadius(12)
-                        .padding(.horizontal, 16)
+                    if let image = image {
+                        // Result image
+                        Image(uiImage: image)
+                            .resizable()
+                            .scaledToFit()
+                            .cornerRadius(12)
+                            .padding(.horizontal, 16)
+                    } else {
+                        VStack(spacing: 10) {
+                            Image(systemName: "photo.on.rectangle.angled")
+                                .font(.system(size: 44))
+                                .foregroundColor(.white.opacity(0.3))
+                            Text("暂无导出结果")
+                                .font(.system(size: 14))
+                                .foregroundColor(.white.opacity(0.5))
+                        }
+                        .padding(.top, 80)
+                    }
 
                     // Quality assessment
                     if let qa = assessment {
@@ -42,7 +54,9 @@ struct ExportResultView: View {
                     }
 
                     // Action buttons
-                    actionButtons
+                    if image != nil {
+                        actionButtons
+                    }
                 }
                 .padding(.bottom, 34)
             }
@@ -161,15 +175,16 @@ struct ExportResultView: View {
     }
 
     private func saveToLibrary() {
+        guard let image = image else { return }
         PHPhotoLibrary.requestAuthorization { status in
             guard status == .authorized || status == .limited else { return }
-            PHPhotoLibrary.shared().performChanges {
+            PHPhotoLibrary.shared().performChanges({
                 PHAssetChangeRequest.creationRequestForAsset(from: image)
-            } success: { success, _ in
+            }, completionHandler: { success, _ in
                 DispatchQueue.main.async {
                     saved = success
                 }
-            }
+            })
         }
     }
 }

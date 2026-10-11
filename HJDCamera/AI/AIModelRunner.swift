@@ -279,7 +279,7 @@ enum CIImageHelper {
             // Float16 存储
             let idx = (channel * h + y) * w + x
             let pointer = a.dataPointer.assumingMemoryBound(to: UInt16.self)
-            return Float(bitPattern: Float16(pointer[idx]))
+            return Float(Float16(bitPattern: pointer[idx]))
         } else {
             let pointer = a.dataPointer.assumingMemoryBound(to: Float.self)
             let idx = (channel * h + y) * w + x

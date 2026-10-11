@@ -33,7 +33,7 @@ struct NightLunarSettingsView: View {
                 }
             }
 
-            Section("超级月亮") {
+            Section {
                 Picker("月面模式", selection: $settingsStore.lunarQualityMode) {
                     ForEach([LunarQualityMode.realSurface, .detailEnhanced, .experimental], id: \.rawValue) {
                         Text($0.rawValue).tag($0)
@@ -49,6 +49,8 @@ struct NightLunarSettingsView: View {
                     Text(String(format: "%.0f%%", settingsStore.moonUpscaleStrength * 100))
                         .font(.system(size: 12, design: .monospaced))
                 }
+            } header: {
+                Text("超级月亮")
             } footer: {
                 Text("实验性高细节模式会增加AI重建比例，真实性保护建议开启")
             }

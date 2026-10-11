@@ -45,12 +45,12 @@ struct StorageSettingsView: View {
 
             Section {
                 Button(role: .destructive) {
-                    storageManager.clearTempFiles()
+                    storageManager.cleanupTempFiles()
                 } label: {
                     Label("清理临时文件", systemImage: "trash")
                 }
                 Button(role: .destructive) {
-                    storageManager.clearModelCache()
+                    storageManager.clearCache()
                 } label: {
                     Label("清除模型缓存", systemImage: "cube.box")
                 }

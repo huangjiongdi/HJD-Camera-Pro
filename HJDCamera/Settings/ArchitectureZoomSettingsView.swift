@@ -29,7 +29,7 @@ struct ArchitectureZoomSettingsView: View {
                 Toggle("倍率吸附", isOn: $settingsStore.zoomSnapping)
             }
 
-            Section("极限变焦") {
+            Section {
                 strengthRow("高变焦 AI 强度", value: $settingsStore.highZoomAIStrength)
                 Toggle("长焦防抖", isOn: $settingsStore.extremeZoomStabilization)
                 Toggle("低可信度警告", isOn: $settingsStore.extremeZoomWarning)
@@ -42,6 +42,8 @@ struct ArchitectureZoomSettingsView: View {
                         .font(.system(size: 12, design: .monospaced))
                         .foregroundColor(.white.opacity(0.6))
                 }
+            } header: {
+                Text("极限变焦")
             } footer: {
                 Text("超过 10× 后为混合/数字变焦，超过 100× 需要 AI 重建。")
             }

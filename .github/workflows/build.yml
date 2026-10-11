@@ -91,9 +91,9 @@ jobs:
 
       - name: Build (signed)
         run: |
-          # The default Actions shell is `bash -eo pipefail`, so a failing
-          # xcodebuild makes the pipeline fail; the `||` block just prints the
-          # error summary before exiting non-zero.
+          # Redirect (no pipe) so `$?` is xcodebuild's own exit code. A pipe
+          # through tee/xcpretty can otherwise mask a failed build.
+          set +e
           xcodebuild \
             -project HJDCamera.xcodeproj \
             -target HJDCamera \
@@ -105,13 +105,16 @@ jobs:
             PROVISIONING_PROFILE=c2619af0-8701-4afa-b741-f09f8c8820fb \
             DEVELOPMENT_TEAM=VVAG93HGLX \
             ONLY_ACTIVE_ARCH=NO \
-            2>&1 | tee build.log || {
-              echo "=== BUILD FAILED ==="
-              echo "=== ERRORS (unique) ==="
-              grep -i "error:" build.log | sort -u | head -120 || true
-              echo "=== END ERRORS ==="
-              exit 1
-            }
+            > build.log 2>&1
+          BUILD_RC=$?
+          set -e
+          if [ "$BUILD_RC" -ne 0 ]; then
+            echo "=== BUILD FAILED (rc=$BUILD_RC) ==="
+            echo "=== ERRORS (unique) ==="
+            grep -i "error:" build.log | sort -u | head -150 || true
+            echo "=== END ERRORS ==="
+            exit 1
+          fi
           echo "=== BUILD SUCCEEDED ==="
 
       - name: Locate app

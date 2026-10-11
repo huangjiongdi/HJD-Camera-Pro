@@ -72,7 +72,7 @@ struct VideoSettingsView: View {
 
             Section("保护机制") {
                 Toggle("过热警告", isOn: $settingsStore.thermalWarning)
-                Toggle("中断自动恢复", isOn: $settingsStore.interruptionRecovery)
+                Toggle("中断自动恢复", isOn: $settingsStore.interruptRecovery)
                 Toggle("低存储空间提醒", isOn: $settingsStore.lowStorageReminder)
             }
         }
