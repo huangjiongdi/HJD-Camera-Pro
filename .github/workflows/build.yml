@@ -103,7 +103,9 @@ jobs:
             PROVISIONING_PROFILE=c2619af0-8701-4afa-b741-f09f8c8820fb \
             DEVELOPMENT_TEAM=VVAG93HGLX \
             ONLY_ACTIVE_ARCH=NO \
-            2>&1 | tail -150
+            2>&1 | tee build.log | tail -50
+          echo "=== ERRORS ==="
+          grep -i "error:" build.log | head -50 || true
 
       - name: Locate app
         id: locate
