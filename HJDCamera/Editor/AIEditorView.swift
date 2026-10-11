@@ -128,7 +128,7 @@ struct AIEditorView: View {
             guard let img = working else { return }
             // 用 RealESRGAN 分块超分后缩回原尺寸（真实细节提升）
             let res = TiledUpscaler.upscale(image: img,
-                                            targetPixels: 12,
+                                            targetPixels: 48_000_000,
                                             showWatermark: false) { _ in }
             // 缩回到原始尺寸
             if let url = res?.fileURL,
@@ -195,7 +195,7 @@ struct AIEditorView: View {
 
     // MARK: 分块应用同尺寸模型
 
-    private func tileApply(model: AIModelName, modelName: String,
+    private func tileApply(model: AIModelHub.ModelName, modelName: String,
                           input: String, image: UIImage,
                           scale: CGFloat) -> UIImage? {
         // 简化：缩放到 512 运行，再缩回

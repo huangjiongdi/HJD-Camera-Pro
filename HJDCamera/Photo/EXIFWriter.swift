@@ -69,7 +69,7 @@ enum EXIFWriter {
         let meta: [CFString: Any] = [
             kCGImagePropertyExifDictionary: exif,
             kCGImagePropertyTIFFDictionary: tiff,
-            kCGImagePropertyOrientation: cg.imageOrientation.rawValue,
+            kCGImagePropertyOrientation: 1,
         ]
         CGImageDestinationAddImage(dest, cg, meta as CFDictionary)
         if CGImageDestinationFinalize(dest) {

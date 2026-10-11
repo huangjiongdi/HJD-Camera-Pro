@@ -34,25 +34,26 @@ jobs:
 
       - name: Build (unsigned)
         run: |
-          set -e
+          set -o pipefail
           xcodebuild \
             -project HJDCamera.xcodeproj \
             -target HJDCamera \
             -configuration Release \
             -sdk iphoneos \
-            -derivedDataPath build \
+            CONFIGURATION_BUILD_DIR="$PWD/build_out" \
             CODE_SIGNING_ALLOWED=NO \
             CODE_SIGNING_REQUIRED=NO \
             CODE_SIGN_IDENTITY="" \
             ONLY_ACTIVE_ARCH=NO \
-            | xcpretty || true
+            2>&1 | tail -80
 
       - name: Locate app
         id: locate
         run: |
-          APP_PATH=$(find build/Build/Products/Release-iphoneos -maxdepth 1 -name "*.app" | head -1)
+          APP_PATH=$(find build_out -maxdepth 1 -name "*.app" | head -1)
           echo "APP_PATH=$APP_PATH"
           echo "app_path=$APP_PATH" >> "$GITHUB_OUTPUT"
+          test -n "$APP_PATH"
           ls -la "$APP_PATH"
           du -sh "$APP_PATH"
 
