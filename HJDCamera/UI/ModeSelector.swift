@@ -1,56 +1,72 @@
+//
+//  ModeSelector.swift
+//  HJD Camera Pro
+//
+//  Bottom mode selector. Shows 6 core modes by default; "更多" or swipe reveals
+//  pro / macro / time-lapse / burst / multi-exposure / panorama.
+//
+
 import SwiftUI
 
-// MARK: - 底部模式选择器
-
 struct ModeSelector: View {
-    @Binding var mode: ShootingMode
+    @EnvironmentObject var appState: AppState
+    @EnvironmentObject var hapticEngine: HapticEngine
     @State private var showMore = false
-    var onSelect: (ShootingMode) -> Void
 
-    private let coreModes: [ShootingMode] = [
-        .photo, .portrait, .video, .sloMo, .night, .moon
-    ]
+    private let champagneGold = Color(red: 0.85, green: 0.75, blue: 0.55)
 
     var body: some View {
-        ScrollView(.horizontal, showsIndicators: false) {
-            HStack(spacing: 10) {
-                ForEach(coreModes) { m in
-                    chip(m)
-                }
-                // 更多（打开其他模式，而非设置）
-                Menu {
-                    ForEach(ShootingMode.allCases.filter {
-                        !coreModes.contains($0)
-                    }) { m in
-                        Button(m.rawValue) { select(m) }
+        VStack(spacing: 6) {
+            // Core modes
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 20) {
+                    ForEach(appState.currentMode.coreModes) { mode in
+                        modeButton(mode)
                     }
-                } label: {
-                    Text("更多")
-                        .font(.system(size: 15, weight: .semibold))
-                        .foregroundColor(.white)
-                        .padding(.horizontal, 14).padding(.vertical, 8)
-                        .background(Capsule().fill(Color.white.opacity(0.18)))
+
+                    // More toggle
+                    Button {
+                        withAnimation { showMore.toggle() }
+                        hapticEngine.impact()
+                    } label: {
+                        Image(systemName: showMore ? "chevron.down" : "chevron.up")
+                            .font(.system(size: 12, weight: .semibold))
+                            .foregroundColor(.white.opacity(0.6))
+                    }
                 }
+                .padding(.horizontal, 16)
             }
-            .padding(.horizontal, 12)
+
+            // More modes panel
+            if showMore {
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(spacing: 16) {
+                        ForEach(appState.currentMode.moreModes) { mode in
+                            modeButton(mode)
+                        }
+                    }
+                    .padding(.horizontal, 16)
+                }
+                .transition(.opacity.combined(with: .move(edge: .bottom)))
+            }
         }
-        .frame(height: 40)
     }
 
-    private func chip(_ m: ShootingMode) -> some View {
-        let selected = m == mode
-        return Button(action: { select(m) }) {
-            Text(m.rawValue)
-                .font(.system(size: 15, weight: selected ? .bold : .medium))
-                .foregroundColor(selected ? .black : .white)
-                .padding(.horizontal, 14).padding(.vertical, 8)
-                .background(Capsule().fill(
-                    selected ? Color.yellow : Color.white.opacity(0.18)))
+    private func modeButton(_ mode: CaptureMode) -> some View {
+        let isSelected = appState.currentMode == mode
+        return Button {
+            appState.setMode(mode)
+            hapticEngine.impact()
+        } label: {
+            Text(mode.rawValue)
+                .font(.system(size: isSelected ? 15 : 13, weight: isSelected ? .bold : .regular))
+                .foregroundColor(isSelected ? champagneGold : .white.opacity(0.65))
         }
+        .buttonStyle(.plain)
     }
+}
 
-    private func select(_ m: ShootingMode) {
-        withAnimation(.easeInOut(duration: 0.15)) { mode = m }
-        onSelect(m)
-    }
+#Preview {
+    ModeSelector()
+        .environmentObject(AppState.shared)
 }

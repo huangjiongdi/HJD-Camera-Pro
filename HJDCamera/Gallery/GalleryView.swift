@@ -1,186 +1,173 @@
+//
+//  GalleryView.swift
+//  HJD Camera Pro
+//
+//  Grid gallery loaded directly from PHAsset. Correctly handles orientation,
+//  EXIF and color space. Tap a thumbnail to open the full-screen viewer.
+//
+
 import SwiftUI
 import Photos
-import UIKit
-
-// MARK: - 相册（网格 + 详情）
+import PhotosUI
 
 struct GalleryView: View {
-    @EnvironmentObject var camera: CameraManager
-    @StateObject private var loader = PhotoGridLoader()
-    @State private var selected: PHAsset?
+    @EnvironmentObject var appState: AppState
+    @State private var assets: [PHAsset] = []
+    @State private var selectedAsset: PHAsset?
+    @State private var showDetail = false
+    @State private var authorized = false
+    private let columns = [GridItem(.adaptive(minimum: 100, spacing: 2))]
 
-    private let cols = [GridItem(.adaptive(minimum: 110), spacing: 2)]
+    private let champagneGold = Color(red: 0.85, green: 0.75, blue: 0.55)
+
+    private let imageManager = PHCachingImageManager()
 
     var body: some View {
         NavigationStack {
             ZStack {
-                Color.black.ignoresSafeArea()
-                ScrollView {
-                    LazyVGrid(columns: cols, spacing: 2) {
-                        ForEach(loader.assets, id: \.localIdentifier) { asset in
-                            GridThumbnail(asset: asset)
-                                .frame(height: 110)
-                                .onTapGesture { selected = asset }
+                Color(red: 0.05, green: 0.05, blue: 0.05)
+                    .ignoresSafeArea()
+
+                if authorized {
+                    ScrollView {
+                        LazyVGrid(columns: columns, spacing: 2) {
+                            ForEach(assets, id: \.localIdentifier) { asset in
+                                thumbnailCell(asset)
+                                    .onTapGesture {
+                                        selectedAsset = asset
+                                        showDetail = true
+                                    }
+                            }
                         }
+                        .padding(2)
+                    }
+                } else {
+                    permissionView
+                }
+            }
+            .navigationTitle("图库")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbarColorScheme(.dark, for: .navigationBar)
+            .toolbar {
+                ToolbarItem(placement: .navigationBarLeading) {
+                    Button {
+                        appState.showGallery = false
+                    } label: {
+                        Image(systemName: "xmark")
+                            .foregroundColor(.white)
                     }
                 }
-                .safeAreaInset(edge: .top) {
-                    HStack {
-                        Button {
-                            camera.backToCamera()
-                        } label: {
-                            Image(systemName: "chevron.left")
-                                .foregroundColor(.yellow)
-                        }
-                        Spacer()
-                        Text("相册 / AI 编辑").foregroundColor(.white)
-                        Spacer()
+                ToolbarItem(placement: .navigationBarTrailing) {
+                    NavigationLink {
+                        CaptureHistoryView()
+                    } label: {
+                        Image(systemName: "clock.arrow.circlepath")
+                            .foregroundColor(.white)
                     }
-                    .padding(.horizontal, 16)
+                }
+            }
+            .onAppear { checkPermission() }
+            .sheet(isPresented: $showDetail) {
+                if let asset = selectedAsset {
+                    PhotoDetailView(asset: asset)
+                }
+            }
+        }
+    }
+
+    // MARK: - Thumbnail
+
+    private func thumbnailCell(_ asset: PHAsset) -> some View {
+        PhAssetThumbnail(asset: asset, imageManager: imageManager, targetSize: CGSize(width: 200, height: 200))
+            .aspectRatio(1, contentMode: .fill)
+            .clipped()
+    }
+
+    // MARK: - Permission
+
+    private var permissionView: some View {
+        VStack(spacing: 16) {
+            Image(systemName: "photo.on.rectangle.angled")
+                .font(.system(size: 48))
+                .foregroundColor(.white.opacity(0.4))
+            Text("需要访问照片库")
+                .font(.system(size: 16))
+                .foregroundColor(.white)
+            Button {
+                PHPhotoLibrary.requestAuthorization { status in
+                    DispatchQueue.main.async {
+                        authorized = (status == .authorized || status == .limited)
+                        if authorized { fetchAssets() }
+                    }
+                }
+            } label: {
+                Text("授权访问")
+                    .font(.system(size: 14, weight: .semibold))
+                    .foregroundColor(.black)
+                    .padding(.horizontal, 24)
                     .padding(.vertical, 10)
-                    .background(Color.black.opacity(0.8))
-                }
+                    .background(Capsule().fill(champagneGold))
             }
         }
-        .sheet(item: Binding(
-            get: { selected.map { AssetBox($0) } },
-            set: { selected = $0?.asset })) { box in
-            PhotoDetail(asset: box.asset)
-        }
-        .onAppear { loader.load() }
+    }
+
+    // MARK: - Fetch
+
+    private func checkPermission() {
+        let status = PHPhotoLibrary.authorizationStatus()
+        authorized = (status == .authorized || status == .limited)
+        if authorized { fetchAssets() }
+    }
+
+    private func fetchAssets() {
+        let options = PHFetchOptions()
+        options.sortDescriptors = [NSSortDescriptor(key: "creationDate", ascending: false)]
+        options.fetchLimit = 500
+        let result = PHAsset.fetchAssets(with: .image, options: options)
+        assets = result.objects(at: IndexSet(0..<result.count))
     }
 }
 
-// 包装为 Identifiable
-struct AssetBox: Identifiable {
-    let asset: PHAsset
-    var id: String { asset.localIdentifier }
-}
+// MARK: - PHAsset Thumbnail
 
-// MARK: - 网格缩略图
-
-struct GridThumbnail: View {
+struct PhAssetThumbnail: View {
     let asset: PHAsset
+    let imageManager: PHCachingImageManager
+    let targetSize: CGSize
     @State private var image: UIImage?
 
     var body: some View {
-        ZStack {
-            if let image {
+        Group {
+            if let image = image {
                 Image(uiImage: image)
-                    .resizable().scaledToFill()
+                    .resizable()
+                    .scaledToFill()
             } else {
-                Color.gray.opacity(0.2)
+                Color.white.opacity(0.05)
+                    .onAppear { loadThumbnail() }
             }
         }
-        .clipped()
-        .onAppear { load() }
     }
 
-    private func load() {
-        let opts = PHImageRequestOptions()
-        opts.deliveryMode = .fastFormat
-        opts.resizeMode = .fast
-        let scale = UIScreen.main.scale
-        let target = CGSize(width: 220, height: 220)
-        PHImageManager.default().requestImage(
-            for: asset, targetSize: target,
-            contentMode: .aspectFill, options: opts) { img, _ in
-            self.image = img
-        }
-    }
-}
-
-// MARK: - 照片详情（不再黑屏）
-
-struct PhotoDetail: View {
-    let asset: PHAsset
-    @EnvironmentObject var camera: CameraManager
-    @Environment(\.dismiss) private var dismiss
-    @State private var image: UIImage?
-    @State private var fullImage: UIImage?
-
-    var body: some View {
-        ZStack {
-            Color.black.ignoresSafeArea()
-            if let image {
-                Image(uiImage: image)
-                    .resizable().scaledToFit()
-            } else {
-                ProgressView()
-            }
-
-            VStack {
-                HStack {
-                    Spacer()
-                    Button {
-                        dismiss()
-                    } label: {
-                        Image(systemName: "xmark.circle.fill")
-                            .font(.title)
-                            .foregroundColor(.white.opacity(0.8))
-                    }
-                }
-                .padding()
-                Spacer()
-                HStack(spacing: 20) {
-                    Button {
-                        if let f = fullImage {
-                            camera.openEditor(f)
-                        }
-                    } label: {
-                        Label("AI 编辑", systemImage: "wand.and.stars")
-                            .padding(.horizontal, 18).padding(.vertical, 10)
-                            .background(Capsule().fill(Color.yellow))
-                            .foregroundColor(.black)
-                    }
-                }
-                .padding(.bottom, 30)
-            }
-        }
-        .onAppear { load() }
-    }
-
-    private func load() {
-        // 先取适合屏幕的图（快速），再取全尺寸
-        let opts = PHImageRequestOptions()
-        opts.deliveryMode = .highQualityFormat
-        opts.isNetworkAccessAllowed = true
-        let target = CGSize(width: UIScreen.main.bounds.width * 2,
-                            height: UIScreen.main.bounds.height * 2)
-        PHImageManager.default().requestImage(
-            for: asset, targetSize: target,
-            contentMode: .aspectFit, options: opts) { img, info in
-            if let img {
-                let degraded = (info?[PHImageResultIsDegradedKey] as? Bool) ?? false
-                self.image = img
-                if !degraded { self.fullImage = img }
+    private func loadThumbnail() {
+        let options = PHImageRequestOptions()
+        options.deliveryMode = .opportunistic
+        options.resizeMode = .fast
+        options.isNetworkAccessAllowed = true
+        imageManager.requestImage(
+            for: asset,
+            targetSize: targetSize,
+            contentMode: .aspectFill,
+            options: options
+        ) { img, _ in
+            if let img = img {
+                DispatchQueue.main.async { self.image = img }
             }
         }
     }
 }
 
-// MARK: - 网格加载器
-
-final class PhotoGridLoader: ObservableObject {
-    @Published var assets: [PHAsset] = []
-
-    func load() {
-        let status = PHPhotoLibrary.authorizationStatus(for: .readWrite)
-        guard status == .authorized || status == .limited else {
-            PHPhotoLibrary.requestAuthorization(for: .readWrite) { [weak self] s in
-                if s == .authorized || s == .limited { self?.fetch() }
-            }
-            return
-        }
-        fetch()
-    }
-
-    private func fetch() {
-        let opts = PHFetchOptions()
-        opts.sortDescriptors = [NSSortDescriptor(key: "creationDate", ascending: false)]
-        let result = PHAsset.fetchAssets(with: .image, options: opts)
-        var list: [PHAsset] = []
-        result.enumerateObjects { a, _, _ in list.append(a) }
-        DispatchQueue.main.async { self.assets = list }
-    }
+#Preview {
+    GalleryView()
+        .environmentObject(AppState.shared)
 }

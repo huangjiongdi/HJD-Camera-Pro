@@ -1,107 +1,127 @@
+//
+//  FilmLUTPicker.swift
+//  HJD Camera Pro
+//
+//  LUT picker grid: browse built-in and custom LUTs by category, preview
+//  thumbnails, select active LUT.
+//
+
 import SwiftUI
 
-// MARK: - 胶片 / LUT 选择器
-
 struct FilmLUTPicker: View {
-    @EnvironmentObject var camera: CameraManager
+    @EnvironmentObject var lutManager: LUTManager
     @Environment(\.dismiss) private var dismiss
-    @State private var tab = 0
+    @State private var selectedCategory: LUTCategory = .film
+
+    private let champagneGold = Color(red: 0.85, green: 0.75, blue: 0.55)
+
+    private var categories: [LUTCategory] {
+        var cats: [LUTCategory] = LUTCategory.allCases.filter { $0 != .custom }
+        if !lutManager.customLUTs.isEmpty { cats.append(.custom) }
+        return cats
+    }
+
+    private var visibleLUTs: [LUTInfo] {
+        if selectedCategory == .custom {
+            return lutManager.customLUTs
+        }
+        return lutManager.luts(in: selectedCategory)
+    }
 
     var body: some View {
-        NavigationStack {
-            VStack {
-                Picker("", selection: $tab) {
-                    Text("胶片").tag(0)
-                    Text("内置 LUT").tag(1)
-                    Text("导入 .cube").tag(2)
-                }
-                .pickerStyle(.segmented)
-                .padding(.horizontal)
+        ZStack {
+            Color(red: 0.05, green: 0.05, blue: 0.05)
+                .ignoresSafeArea()
 
-                if tab == 0 {
-                    filmGrid
-                } else if tab == 1 {
-                    lutGrid
-                } else {
-                    importCube
-                }
-            }
-            .navigationTitle("胶片 / LUT")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .confirmationAction) {
-                    Button("完成") { dismiss() }
-                }
-            }
-        }
-    }
-
-    private var filmGrid: some View {
-        ScrollView {
-            LazyVGrid(columns: [GridItem(.adaptive(minimum: 110))],
-                      spacing: 12) {
-                Button {
-                    camera.filmLook = nil
-                    dismiss()
-                } label: { pickerTile("原片", selected: camera.filmLook == nil) }
-
-                ForEach(FilmLab.styles, id: \.self) { s in
-                    Button {
-                        camera.filmLook = s
-                        dismiss()
-                    } label: {
-                        pickerTile(s, selected: camera.filmLook == s)
+            VStack(spacing: 0) {
+                // Category tabs
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(spacing: 12) {
+                        // None option
+                        categoryTab("无", selected: lutManager.activeLUTName == "None") {
+                            lutManager.selectLUT("None")
+                        }
+                        ForEach(categories, id: \.self) { cat in
+                            categoryTab(cat.rawValue, selected: selectedCategory == cat) {
+                                selectedCategory = cat
+                            }
+                        }
                     }
+                    .padding(.horizontal, 16)
                 }
-            }
-            .padding()
-        }
-    }
+                .padding(.vertical, 12)
 
-    private var lutGrid: some View {
-        let luts = LUTManager.shared.availableLUTs()
-        return ScrollView {
-            LazyVGrid(columns: [GridItem(.adaptive(minimum: 120))],
-                      spacing: 12) {
-                Button {
-                    camera.activeLUT = nil
-                    dismiss()
-                } label: { pickerTile("无 LUT", selected: camera.activeLUT == nil) }
-                ForEach(luts, id: \.self) { s in
-                    Button {
-                        camera.activeLUT = s
-                        dismiss()
-                    } label: {
-                        pickerTile(s, selected: camera.activeLUT == s)
+                // LUT grid
+                ScrollView {
+                    LazyVGrid(columns: [GridItem(.adaptive(minimum: 100), spacing: 12)], spacing: 12) {
+                        ForEach(visibleLUTs) { lut in
+                            lutCell(lut)
+                        }
                     }
+                    .padding(16)
                 }
             }
-            .padding()
         }
+        .navigationTitle("选择LUT")
+        .navigationBarTitleDisplayMode(.inline)
+        .toolbarColorScheme(.dark, for: .navigationBar)
     }
 
-    private var importCube: some View {
-        VStack(spacing: 16) {
-            Image(systemName: "square.and.arrow.down")
-                .font(.system(size: 44))
-                .foregroundColor(.yellow)
-            Text("将 .cube 文件放入 App 文档目录，或通过「文件」导入。")
-                .multilineTextAlignment(.center)
-                .foregroundColor(.secondary)
-            Text("内置已包含 69 个 LUT，可直接使用。")
-                .font(.footnote)
-                .foregroundColor(.secondary)
+    private func categoryTab(_ title: String, selected: Bool, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Text(title)
+                .font(.system(size: 13, weight: selected ? .semibold : .regular))
+                .foregroundColor(selected ? .black : .white.opacity(0.7))
+                .padding(.horizontal, 14)
+                .padding(.vertical, 7)
+                .background(Capsule().fill(selected ? champagneGold : Color.white.opacity(0.08)))
         }
-        .padding()
+        .buttonStyle(.plain)
     }
 
-    private func pickerTile(_ title: String, selected: Bool) -> some View {
-        Text(title)
-            .font(.system(size: 13, weight: selected ? .bold : .medium))
-            .foregroundColor(selected ? .black : .white)
-            .frame(height: 52)
-            .frame(maxWidth: .infinity)
-            .background(RoundedRectangle(cornerRadius: 10)
-                .fill(selected ? Color.yellow : Color.white.opacity(0.12)))
+    private func lutCell(_ lut: LUTInfo) -> some View {
+        let isActive = lutManager.activeLUTName == lut.name
+        return Button {
+            lutManager.selectLUT(lut.name)
+        } label: {
+            VStack(spacing: 6) {
+                // Preview swatch
+                RoundedRectangle(cornerRadius: 8)
+                    .fill(LinearGradient(
+                        colors: swatchColors(for: lut.name),
+                        startPoint: .topLeading,
+                        endPoint: .bottomTrailing
+                    ))
+                    .frame(height: 80)
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 8)
+                            .stroke(isActive ? champagneGold : Color.clear, lineWidth: 2)
+                    )
+
+                Text(lut.name)
+                    .font(.system(size: 10))
+                    .foregroundColor(isActive ? champagneGold : .white.opacity(0.7))
+                    .lineLimit(1)
+            }
+        }
+        .buttonStyle(.plain)
+    }
+
+    private func swatchColors(for name: String) -> [Color] {
+        // Generate a deterministic gradient based on name hash
+        let hash = abs(name.hashValue)
+        let hue1 = Double(hash % 360) / 360.0
+        let hue2 = Double((hash / 360) % 360) / 360.0
+        return [
+            Color(hue: hue1, saturation: 0.6, brightness: 0.8),
+            Color(hue: hue2, saturation: 0.5, brightness: 0.6)
+        ]
+    }
+}
+
+#Preview {
+    NavigationStack {
+        FilmLUTPicker()
+            .environmentObject(LUTManager.shared)
     }
 }

@@ -1,65 +1,84 @@
+//
+//  CameraPreviewView.swift
+//  HJD Camera Pro
+//
+//  SwiftUI wrapper around AVCaptureVideoPreviewLayer. Keeps the live preview
+//  rotation in sync with OrientationObserver and exposes a double-tap gesture
+//  that jumps to a 2x "focus check" zoom so the user can inspect focus.
+//
+
 import SwiftUI
 import AVFoundation
 import UIKit
 
-// MARK: - 相机预览视图（画面随方向旋转）
-
 struct CameraPreviewView: UIViewRepresentable {
     let session: AVCaptureSession
-    @Binding var digitalScale: CGFloat
-    let orientation: UIDeviceOrientation
+    /// Called with the tap location (in view coordinates) for tap-to-focus/expose.
+    var onTapAt: ((CGPoint) -> Void)?
+    /// Called when the user double-taps; toggles a focus-check zoom.
+    var onDoubleTap: (() -> Void)?
 
-    func makeUIView(context: Context) -> PreviewContainer {
-        let view = PreviewContainer()
-        view.previewLayer.session = session
-        view.previewLayer.videoGravity = .resizeAspectFill
-        view.previewLayer.connection?.videoOrientation = Self.map(orientation)
-        view.backgroundColor = .black
+    @ObservedObject private var orientation = OrientationObserver.shared
+
+    func makeCoordinator() -> Coordinator {
+        Coordinator(self)
+    }
+
+    func makeUIView(context: Context) -> PreviewContainerView {
+        let view = PreviewContainerView()
+        view.videoPreviewLayer.session = session
+        view.videoPreviewLayer.videoGravity = .resizeAspect
+
+        let tap = UITapGestureRecognizer(target: context.coordinator,
+                                          action: #selector(Coordinator.handleTap(_:)))
+        view.addGestureRecognizer(tap)
+
+        let doubleTap = UITapGestureRecognizer(target: context.coordinator,
+                                              action: #selector(Coordinator.handleDoubleTap(_:)))
+        doubleTap.numberOfTapsRequired = 2
+        view.addGestureRecognizer(doubleTap)
+        tap.require(toFail: doubleTap)
+
+        context.coordinator.previewView = view
         return view
     }
 
-    func updateUIView(_ view: PreviewContainer, context: Context) {
-        // 数字裁切（高倍）
-        let s = max(1, digitalScale)
-        view.previewLayer.anchorPoint = CGPoint(x: 0.5, y: 0.5)
-        view.previewLayer.setAffineTransform(CGAffineTransform(scaleX: s, y: s))
-        // 方向
-        if let conn = view.previewLayer.connection, conn.isVideoOrientationSupported {
-            let target = Self.map(orientation)
-            if conn.videoOrientation != target {
-                CATransaction.begin()
-                CATransaction.setAnimationDuration(0.25)
-                conn.videoOrientation = target
-                CATransaction.commit()
-            }
+    func updateUIView(_ uiView: PreviewContainerView, context: Context) {
+        uiView.updateRotation(angle: orientation.videoRotationAngle)
+        context.coordinator.parent = self
+    }
+
+    final class Coordinator: NSObject {
+        var parent: CameraPreviewView
+        weak var previewView: PreviewContainerView?
+
+        init(_ parent: CameraPreviewView) {
+            self.parent = parent
+        }
+
+        @objc func handleTap(_ gesture: UITapGestureRecognizer) {
+            guard let view = gesture.view else { return }
+            let point = gesture.location(in: view)
+            parent.onTapAt?(point)
+        }
+
+        @objc func handleDoubleTap(_ gesture: UITapGestureRecognizer) {
+            parent.onDoubleTap?()
         }
     }
 
-    static func map(_ o: UIDeviceOrientation) -> AVCaptureVideoOrientation {
-        switch o {
-        case .portrait: return .portrait
-        case .portraitUpsideDown: return .portraitUpsideDown
-        case .landscapeLeft: return .landscapeRight
-        case .landscapeRight: return .landscapeLeft
-        default:
-            // 退回当前界面方向
-            if let scene = UIApplication.shared.connectedScenes
-                .compactMap({ $0 as? UIWindowScene }).first {
-                switch scene.interfaceOrientation {
-                case .landscapeLeft: return .landscapeLeft
-                case .landscapeRight: return .landscapeRight
-                case .portraitUpsideDown: return .portraitUpsideDown
-                default: return .portrait
-                }
-            }
-            return .portrait
-        }
-    }
-}
+    final class PreviewContainerView: UIView {
+        override class var layerClass: AnyClass { AVCaptureVideoPreviewLayer.self }
 
-final class PreviewContainer: UIView {
-    override class var layerClass: AnyClass { AVCaptureVideoPreviewLayer.self }
-    var previewLayer: AVCaptureVideoPreviewLayer {
-        layer as! AVCaptureVideoPreviewLayer
+        var videoPreviewLayer: AVCaptureVideoPreviewLayer {
+            // swiftlint:disable:next force_cast
+            layer as! AVCaptureVideoPreviewLayer
+        }
+
+        func updateRotation(angle: CGFloat) {
+            guard let connection = videoPreviewLayer.connection,
+                  connection.isVideoRotationAngleSupported(angle) else { return }
+            connection.videoRotationAngle = angle
+        }
     }
 }

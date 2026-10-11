@@ -1,69 +1,121 @@
+//
+//  FocusGestureView.swift
+//  HJD Camera Pro
+//
+//  Focus gesture handling over the preview: tap to focus/expose, long-press to
+//  lock AE/AF, double-tap to zoom. Animated focus box and lock indicator.
+//
+
 import SwiftUI
-import UIKit
 
-// MARK: - 对焦手势层（点击对焦 / 长按锁定）
+struct FocusGestureView: View {
+    @EnvironmentObject var appState: AppState
+    @EnvironmentObject var cameraManager: CameraManager
+    @Binding var focusPoint: CGPoint?
+    @Binding var showFocusBox: Bool
+    @State private var boxScale: CGFloat = 1.0
+    @State private var lockIndicatorShown = false
 
-struct FocusGestureView: UIViewRepresentable {
-    let onTap: (CGPoint) -> Void
-    let onLongPress: (CGPoint) -> Void
-
-    func makeUIView(context: Context) -> GestureView {
-        let view = GestureView()
-        view.backgroundColor = .clear
-        let tap = UITapGestureRecognizer(
-            target: context.coordinator, action: #selector(Coordinator.tap(_:)))
-        let long = UILongPressGestureRecognizer(
-            target: context.coordinator, action: #selector(Coordinator.longPress(_:)))
-        long.minimumPressDuration = 0.5
-        let double = UITapGestureRecognizer(
-            target: context.coordinator, action: #selector(Coordinator.double(_:)))
-        double.numberOfTapsRequired = 2
-        tap.require(toFail: double)
-        view.addGestureRecognizer(tap)
-        view.addGestureRecognizer(long)
-        view.addGestureRecognizer(double)
-        context.coordinator.onTap = onTap
-        context.coordinator.onLongPress = onLongPress
-        return view
-    }
-
-    func updateUIView(_ uiView: GestureView, context: Context) {
-        context.coordinator.onTap = onTap
-        context.coordinator.onLongPress = onLongPress
-    }
-
-    func makeCoordinator() -> Coordinator { Coordinator() }
-
-    final class Coordinator: NSObject {
-        var onTap: ((CGPoint) -> Void)?
-        var onLongPress: ((CGPoint) -> Void)?
-
-        @objc func tap(_ g: UITapGestureRecognizer) {
-            onTap?(g.location(in: g.view))
-        }
-        @objc func double(_ g: UITapGestureRecognizer) {
-            // 双击可放大（此处简单对焦）
-            onTap?(g.location(in: g.view))
-        }
-        @objc func longPress(_ g: UILongPressGestureRecognizer) {
-            guard g.state == .began else { return }
-            onLongPress?(g.location(in: g.view))
-        }
-    }
-
-    final class GestureView: UIView {}
-}
-
-// MARK: - 对焦框（黄色）
-
-struct FocusSquare: View {
-    let point: CGPoint
-    var locked: Bool = false
+    private let champagneGold = Color(red: 0.85, green: 0.75, blue: 0.55)
 
     var body: some View {
-        RoundedRectangle(cornerRadius: 4)
-            .stroke(locked ? Color.yellow : Color.yellow, lineWidth: 1.5)
-            .frame(width: 70, height: 70)
-            .position(point)
+        GeometryReader { geo in
+            ZStack {
+                // Transparent gesture layer
+                Color.clear
+                    .contentShape(Rectangle())
+                    .onTapGesture { location in
+                        handleTap(at: location, in: geo.size)
+                    }
+                    .onLongPressGesture(minimumDuration: 0.6) {
+                        handleLongPress()
+                    }
+                    .onTapGesture(count: 2) {
+                        handleDoubleTap()
+                    }
+
+                // Focus box
+                if showFocusBox, let point = focusPoint {
+                    focusBox
+                        .position(point)
+                        .scaleEffect(boxScale)
+                }
+
+                // AE/AF lock badge
+                if lockIndicatorShown || (appState.focusLocked && appState.exposureLocked) {
+                    lockBadge
+                        .position(
+                            x: focusPoint?.x ?? geo.size.width / 2,
+                            y: (focusPoint?.y ?? geo.size.height / 2) - 50
+                        )
+                }
+            }
+        }
     }
+
+    // MARK: - Focus Box
+
+    private var focusBox: some View {
+        Rectangle()
+            .stroke(appState.focusLocked ? .cyan : champagneGold, lineWidth: 1.5)
+            .frame(width: 80, height: 80)
+            .overlay(
+                Rectangle()
+                    .stroke(appState.focusLocked ? .cyan : champagneGold, lineWidth: 1)
+                    .frame(width: 90, height: 90)
+                    .opacity(0.3)
+            )
+    }
+
+    private var lockBadge: some View {
+        HStack(spacing: 4) {
+            Image(systemName: "lock.fill")
+                .font(.system(size: 10))
+            Text("AE/AF锁定")
+                .font(.system(size: 10, weight: .medium))
+        }
+        .foregroundColor(.cyan)
+        .padding(.horizontal, 8)
+        .padding(.vertical, 4)
+        .background(Capsule().fill(Color.black.opacity(0.7)))
+    }
+
+    // MARK: - Gestures
+
+    private func handleTap(at point: CGPoint, in size: CGSize) {
+        focusPoint = point
+        showFocusBox = true
+        boxScale = 0.8
+        withAnimation(.easeOut(duration: 0.2)) { boxScale = 1.0 }
+
+        cameraManager.focus(at: point)
+        cameraManager.expose(at: point)
+
+        // Auto-hide focus box after 2 seconds
+        DispatchQueue.main.asyncAfter(deadline: .now() + 2.0) {
+            withAnimation { showFocusBox = false }
+        }
+    }
+
+    private func handleLongPress() {
+        appState.focusLocked = true
+        appState.exposureLocked = true
+        lockIndicatorShown = true
+        cameraManager.lockFocus()
+
+        DispatchQueue.main.asyncAfter(deadline: .now() + 2.0) {
+            withAnimation { lockIndicatorShown = false }
+        }
+    }
+
+    private func handleDoubleTap() {
+        let newZoom = appState.currentZoomFactor > 2 ? 1.0 : 2.0
+        appState.setZoom(newZoom, source: .optical)
+        cameraManager.setZoom(newZoom)
+    }
+}
+
+#Preview {
+    FocusGestureView(focusPoint: .constant(nil), showFocusBox: .constant(false))
+        .environmentObject(AppState.shared)
 }

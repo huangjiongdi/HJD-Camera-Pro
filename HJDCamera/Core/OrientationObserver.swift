@@ -1,39 +1,61 @@
-import SwiftUI
-import UIKit
-import Combine
+//
+//  OrientationObserver.swift
+//  HJD Camera Pro
+//
+//  Observes physical device orientation and exposes the matching video rotation
+//  angle used by AVCaptureVideoPreviewLayer and capture connections. All
+//  consumers (preview layer, photo output, movie output) read from this single
+//  source of truth so rotation stays consistent across the app.
+//
 
-// MARK: - 设备方向观察器
+import SwiftUI
+import Combine
+import UIKit
 
 final class OrientationObserver: ObservableObject {
-    @Published var orientation: UIDeviceOrientation = .portrait
+    static let shared = OrientationObserver()
 
-    private var cancellable: AnyCancellable?
+    /// Current physical device orientation (only valid interface orientations are published).
+    @Published var deviceOrientation: UIDeviceOrientation = .portrait
 
-    init() {
+    /// Rotation angle (degrees) to apply to a back-camera capture connection in portrait-facing capture.
+    @Published var videoRotationAngle: CGFloat = 90
+
+    private var cancellables = Set<AnyCancellable>()
+
+    private init() {
         UIDevice.current.beginGeneratingDeviceOrientationNotifications()
-        cancellable = NotificationCenter.default
-            .publisher(for: UIDevice.orientationDidChangeNotification)
-            .sink { [weak self] _ in
-                let o = UIDevice.current.orientation
-                if o.isLandscape || o == .portrait {
-                    self?.orientation = o
-                }
+        NotificationCenter.default.publisher(for: UIDevice.orientationDidChangeNotification)
+            .compactMap { _ in UIDevice.current.orientation }
+            .filter { $0.isValidInterfaceOrientation }
+            .sink { [weak self] orientation in
+                guard let self = self else { return }
+                self.deviceOrientation = orientation
+                self.videoRotationAngle = self.rotationAngle(for: orientation)
             }
+            .store(in: &cancellables)
     }
-}
 
-// MARK: - 预览尺寸辅助
-
-enum PreviewGeometry {
-    /// 视频预览按画面比例显示的尺寸（用于照片 4:3 / 视频 16:9）
-    static func previewSize(in container: CGSize, aspect: CGFloat,
-                            isLandscape: Bool) -> CGSize {
-        if isLandscape {
-            return CGSize(width: container.width, height: container.height)
+    /// Maps a physical device orientation to the rotation angle required by a
+    /// back-facing camera connection so recorded/captured media is upright.
+    func rotationAngle(for orientation: UIDeviceOrientation) -> CGFloat {
+        switch orientation {
+        case .portrait:            return 90
+        case .portraitUpsideDown:  return 270
+        case .landscapeRight:      return 0    // device rotated clockwise, home button on the right
+        case .landscapeLeft:       return 180  // device rotated counter-clockwise, home button on the left
+        default:                   return 90
         }
-        // 照片：按比例展示，上下留黑
-        let w = container.width
-        let h = w / aspect
-        return CGSize(width: w, height: min(h, container.height))
+    }
+
+    /// Convenience used by still-image orientation metadata.
+    var imageOrientation: CGImagePropertyOrientation {
+        switch deviceOrientation {
+        case .portrait:           return .right
+        case .portraitUpsideDown: return .left
+        case .landscapeRight:     return .up
+        case .landscapeLeft:      return .down
+        default:                  return .right
+        }
     }
 }
