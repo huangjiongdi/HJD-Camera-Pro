@@ -60,8 +60,8 @@ jobs:
           python3 "$RUNNER_TEMP/decode.py" "$P12_BASE64" "$RUNNER_TEMP/cert.p12"
           ls -la "$RUNNER_TEMP/cert.p12"
 
-          # Import p12 into keychain (no-password p12 for macOS compatibility)
-          security import "$RUNNER_TEMP/cert.p12" -A -f pkcs12 -k "$KEYCHAIN_PATH"
+          # Import p12 into keychain (no-password p12, pass empty password)
+          security import "$RUNNER_TEMP/cert.p12" -P "" -A -f pkcs12 -k "$KEYCHAIN_PATH"
           security list-keychain -d user -s "$KEYCHAIN_PATH"
           security set-key-partition-list -S apple-tool:,apple: -s -k "hjd123" "$KEYCHAIN_PATH"
 
