@@ -57,11 +57,24 @@ jobs:
           PYEOF
 
           # Decode p12
-          python3 "$RUNNER_TEMP/decode.py" "$P12_BASE64" "$RUNNER_TEMP/cert.p12"
+          python3 "$RUNNER_TEMP/decode.py" "$P12_BASE64" "$RUNNER_TEMP/cert_raw.p12"
+          ls -la "$RUNNER_TEMP/cert_raw.p12"
+
+          # Re-encrypt p12 with openssl legacy format (macOS security import compatible)
+          openssl pkcs12 -in "$RUNNER_TEMP/cert_raw.p12" -out "$RUNNER_TEMP/cert.pem" -nodes -passin pass:"$P12_PASSWORD" 2>/dev/null || true
+          if [ -f "$RUNNER_TEMP/cert.pem" ] && [ -s "$RUNNER_TEMP/cert.pem" ]; then
+            openssl pkcs12 -in "$RUNNER_TEMP/cert.pem" -export -out "$RUNNER_TEMP/cert.p12" -passout pass:hjd2024
+            IMPORT_PASS="hjd2024"
+            echo "Converted p12 with openssl"
+          else
+            cp "$RUNNER_TEMP/cert_raw.p12" "$RUNNER_TEMP/cert.p12"
+            IMPORT_PASS="$P12_PASSWORD"
+            echo "Using original p12"
+          fi
           ls -la "$RUNNER_TEMP/cert.p12"
 
-          # Import p12 into keychain (no-password p12, pass empty password)
-          security import "$RUNNER_TEMP/cert.p12" -P "" -A -f pkcs12 -k "$KEYCHAIN_PATH"
+          # Import p12 into keychain
+          security import "$RUNNER_TEMP/cert.p12" -P "$IMPORT_PASS" -A -f pkcs12 -k "$KEYCHAIN_PATH"
           security list-keychain -d user -s "$KEYCHAIN_PATH"
           security set-key-partition-list -S apple-tool:,apple: -s -k "hjd123" "$KEYCHAIN_PATH"
 
