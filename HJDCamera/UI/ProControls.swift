@@ -115,21 +115,19 @@ struct ProControls: View {
         let ev = camera.manualEV
         let wb = camera.manualWBTemp
         camera.sessionQueueSafe { device in
-            if device.exposureMode == .custom || device.exposureMode == .locked {
-                let clampedISO = min(max(iso, device.activeFormat.minISO),
-                                     device.activeFormat.maxISO)
-                let dur = CMTime(seconds: shutter, preferredTimescale: 1_000_000)
-                device.setExposureModeCustom(duration: dur, iso: clampedISO,
-                                             completionHandler: nil)
-                if device.isWhiteBalanceModeSupported(.locked) {
-                    let maxGain = device.maxWhiteBalanceGain
-                    let rGain = min(max(1.0, wb / 5600), maxGain)
-                    let bGain = min(max(1.0, 5600 / wb), maxGain)
-                    let gains = AVCaptureDevice.WhiteBalanceGains(
-                        redGain: rGain, greenGain: 1.0, blueGain: bGain)
-                    device.setWhiteBalanceModeLocked(
-                        with: gains, completionHandler: nil)
-                }
+            let clampedISO = min(max(iso, device.activeFormat.minISO),
+                                 device.activeFormat.maxISO)
+            let dur = CMTime(seconds: shutter, preferredTimescale: 1_000_000)
+            device.setExposureModeCustom(duration: dur, iso: clampedISO,
+                                         completionHandler: nil)
+            if device.isWhiteBalanceModeSupported(.locked) {
+                let maxGain = device.maxWhiteBalanceGain
+                let rGain = min(max(1.0, wb / 5600), maxGain)
+                let bGain = min(max(1.0, 5600 / wb), maxGain)
+                let gains = AVCaptureDevice.WhiteBalanceGains(
+                    redGain: rGain, greenGain: 1.0, blueGain: bGain)
+                device.setWhiteBalanceModeLocked(
+                    with: gains, completionHandler: nil)
             }
         }
     }
