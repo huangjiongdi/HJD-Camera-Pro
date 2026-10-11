@@ -122,8 +122,11 @@ struct ProControls: View {
                 device.setExposureModeCustom(duration: dur, iso: clampedISO,
                                              completionHandler: nil)
                 if device.isWhiteBalanceModeSupported(.locked) {
+                    let maxGain = device.maxWhiteBalanceGain
+                    let rGain = min(max(1.0, wb / 5600), maxGain)
+                    let bGain = min(max(1.0, 5600 / wb), maxGain)
                     let gains = AVCaptureDevice.WhiteBalanceGains(
-                        redGain: wb / 5600, greenGain: 1, blueGain: 5600 / wb)
+                        redGain: rGain, greenGain: 1.0, blueGain: bGain)
                     device.setWhiteBalanceModeLocked(
                         with: gains, completionHandler: nil)
                 }
