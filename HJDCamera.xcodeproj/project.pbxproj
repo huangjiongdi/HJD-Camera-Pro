@@ -83,7 +83,7 @@
 					};
 				};
 			};
-			buildConfigurationList = A70000000000000000000001 /* Build configuration list for PBXProject "HJDCamera" */;
+			buildConfigurationList = A80000000000000000000001 /* Build configuration list for PBXProject "HJDCamera" */;
 			compatibilityVersion = "Xcode 15.0";
 			developmentRegion = en;
 			hasScannedForEncodings = 0;
@@ -216,13 +216,13 @@
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
-		A70000000000000000000001 /* Build configuration list for PBXProject "HJDCamera" */ = {
+		A80000000000000000000001 /* Build configuration list for PBXProject "HJDCamera" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (
 				B10000000000000000000001 /* Debug */,
 				B10000000000000000000002 /* Release */,
 			);
-			defaultIsVisible = YES;
+			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;
 		};
 		A70000000000000000000002 /* Build configuration list for PBXNativeTarget "HJDCamera" */ = {
@@ -231,7 +231,7 @@
 				B10000000000000000000003 /* Debug */,
 				B10000000000000000000004 /* Release */,
 			);
-			defaultIsVisible = YES;
+			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;
 		};
 /* End XCConfigurationList section */
