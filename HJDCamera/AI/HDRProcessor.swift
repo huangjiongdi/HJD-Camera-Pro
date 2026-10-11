@@ -237,11 +237,11 @@ final class LocalToneMapper {
     func map(image: CIImage) -> ToneMapResult {
         // 基础色调映射
         let mapped = image.applyingFilter("CIToneCurve", parameters: [
-            kCIInputPoint0: CIVector(x: 0, y: 0.02),
-            kCIInputPoint1: CIVector(x: 0.25, y: 0.3),
-            kCIInputPoint2: CIVector(x: 0.5, y: 0.55),
-            kCIInputPoint3: CIVector(x: 0.75, y: 0.75),
-            kCIInputPoint4: CIVector(x: 1, y: 0.92)
+            "inputPoint0": CIVector(x: 0, y: 0.02),
+            "inputPoint1": CIVector(x: 0.25, y: 0.3),
+            "inputPoint2": CIVector(x: 0.5, y: 0.55),
+            "inputPoint3": CIVector(x: 0.75, y: 0.75),
+            "inputPoint4": CIVector(x: 1, y: 0.92)
         ])
 
         // 局部对比度增强
@@ -269,13 +269,13 @@ final class HDRProcessor: ObservableObject {
 
     /// 完整 HDR 处理流程。
     func process(frames: [CIImage], completion: @escaping (CIImage?) -> Void) {
-        state = .running
+        state = .processing(progress: 0)
         progress = 0
 
         processingQueue.async { [weak self] in
             guard let self = self, let first = frames.first else {
                 DispatchQueue.main.async {
-                    self?.state = .failed
+                    self?.state = .failed(error: "HDR 处理失败")
                     completion(nil)
                 }
                 return

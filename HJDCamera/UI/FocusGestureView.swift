@@ -88,8 +88,12 @@ struct FocusGestureView: View {
         boxScale = 0.8
         withAnimation(.easeOut(duration: 0.2)) { boxScale = 1.0 }
 
-        cameraManager.focus(at: point)
-        cameraManager.expose(at: point)
+        // Focus-at-interest expects a normalized point (0...1).
+        let normalized = CGPoint(
+            x: min(max(point.x / max(size.width, 1), 0), 1),
+            y: min(max(point.y / max(size.height, 1), 0), 1)
+        )
+        FocusExposureController.shared.focus(at: normalized)
 
         // Auto-hide focus box after 2 seconds
         DispatchQueue.main.asyncAfter(deadline: .now() + 2.0) {
@@ -101,7 +105,7 @@ struct FocusGestureView: View {
         appState.focusLocked = true
         appState.exposureLocked = true
         lockIndicatorShown = true
-        cameraManager.lockFocus()
+        FocusExposureController.shared.lockAEAF()
 
         DispatchQueue.main.asyncAfter(deadline: .now() + 2.0) {
             withAnimation { lockIndicatorShown = false }
@@ -111,7 +115,7 @@ struct FocusGestureView: View {
     private func handleDoubleTap() {
         let newZoom = appState.currentZoomFactor > 2 ? 1.0 : 2.0
         appState.setZoom(newZoom, source: .optical)
-        cameraManager.setZoom(newZoom)
+        cameraManager.setZoomFactor(CGFloat(newZoom))
     }
 }
 

@@ -27,15 +27,15 @@ final class NightPipeline: ObservableObject {
     ///   - preset: 夜景预设
     ///   - completion: 主线程回调最终结果
     func process(frames: [CIImage],
-                 preset: NightPreset = .auto,
+                 preset: NightPreset = .natural,
                  completion: @escaping (CIImage?) -> Void) {
-        state = .running
+        state = .processing(progress: 0)
         progress = 0
 
         processingQueue.async { [weak self] in
             guard let self = self, !frames.isEmpty else {
                 DispatchQueue.main.async {
-                    self?.state = .failed
+                    self?.state = .failed(error: "夜景处理失败")
                     completion(nil)
                 }
                 return

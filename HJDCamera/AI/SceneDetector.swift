@@ -39,7 +39,7 @@ final class SceneDetector {
 
         // 规则 3：圆形高亮物体 -> 月亮
         if detectMoonDisk(in: image) {
-            scores[.moon] = (scores[.moon] ?? 0) + 0.9
+            scores[.lunar] = (scores[.lunar] ?? 0) + 0.9
         }
 
         // 规则 4：高细节近景 -> 微距
@@ -85,14 +85,18 @@ final class SceneDetector {
     /// 根据场景返回推荐的默认模型分类。
     func recommendedModelCategory(for scene: SceneType) -> AIModelCategory {
         switch scene {
-        case .night: return .denoise
-        case .portrait: return .faceEnhance
-        case .moon: return .lunar
+        case .normal: return .superResolution
+        case .night: return .nightDenoise
+        case .portrait: return .portrait
+        case .lunar: return .lunar
         case .macro: return .macro
         case .architecture: return .architecture
-        case .backlight, .landscape, .sunset, .starry: return .superResolution
-        case .document: return .textEnhance
-        case .motion, .fireworks, .stage: return .deblur
+        case .backlight: return .hdr
+        case .landscape: return .superResolution
+        case .document: return .text
+        case .sports, .fireworks, .stage: return .superResolution
+        case .sunset: return .superResolution
+        case .starry: return .superResolution
         }
     }
 

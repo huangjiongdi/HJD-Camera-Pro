@@ -2,14 +2,15 @@
 //  LUTApplier.swift
 //  HJD Camera Pro
 //
-//  LUT application engine using Metal/CIFilter. Applies 3D LUT (.cube) or
-//  built-in color transforms to CIImage with adjustable intensity.
+//  LUT application engine using CoreImage. Applies 3D LUT (.cube) or built-in
+//  color transforms to CIImage with adjustable intensity.
 //
 
 import CoreImage
 import CoreImage.CIFilterBuiltins
 import Metal
 import UIKit
+import simd
 
 class LUTApplier: ObservableObject {
     static let shared = LUTApplier()
@@ -17,7 +18,7 @@ class LUTApplier: ObservableObject {
     private var context: CIContext
     private var metalDevice: MTLDevice?
 
-    private init() {
+    init() {
         metalDevice = MTLCreateSystemDefaultDevice()
         if let device = metalDevice {
             context = CIContext(mtlDevice: device)
@@ -32,89 +33,86 @@ class LUTApplier: ObservableObject {
         guard name != "None", intensity > 0 else { return image }
 
         // Try to load custom .cube LUT first
-        if let cubeImage = loadCubeLUT(named: name) {
-            return applyColorCube(image: image, cube: cubeImage, intensity: intensity)
+        if let url = Bundle.main.url(forResource: name, withExtension: "cube"),
+           let (dimension, cubeData) = parseCube(at: url) {
+            return applyColorCube(image: image,
+                                  dimension: dimension,
+                                  cubeData: cubeData,
+                                  intensity: intensity)
         }
 
         // Fallback: built-in color transform
         return applyBuiltinTransform(image: image, name: name, intensity: intensity)
     }
 
-    // MARK: - .cube LUT via CIColorCube
+    // MARK: - .cube LUT parsing
 
-    private func loadCubeLUT(named name: String) -> CIImage? {
-        // Look for bundled .cube file
-        guard let url = Bundle.main.url(forResource: name, withExtension: "cube") else {
+    /// Parse a .cube file into (dimension, RGBA float32 cube data). CIColorCube
+    /// expects red to vary fastest, then green, then blue — the same order used
+    /// by standard .cube files.
+    private func parseCube(at url: URL) -> (Int, Data)? {
+        guard let text = try? String(contentsOf: url, encoding: .utf8) else {
             return nil
         }
-        do {
-            let data = try Data(contentsOf: url)
-            return parseCubeData(data)
-        } catch {
-            return nil
-        }
-    }
-
-    private func parseCubeData(_ data: Data) -> CIImage? {
-        // Simplified .cube parser: extracts size and data points
-        guard let text = String(data: data, encoding: .utf8) else { return nil }
         var size = 2
-        var entries: [simd_float3] = []
+        var entries: [SIMD3<Float>] = []
 
         for line in text.components(separatedBy: .newlines) {
             let trimmed = line.trimmingCharacters(in: .whitespaces)
             if trimmed.hasPrefix("#") || trimmed.isEmpty { continue }
-            if trimmed.hasPrefix("LUT_3D_SIZE") {
-                size = Int(trimmed.components(separatedBy: " ").last ?? "2") ?? 2
+            let header = trimmed.uppercased()
+            if header.hasPrefix("LUT_3D_SIZE") {
+                size = Int(trimmed.components(separatedBy: .whitespaces)
+                    .filter { !$0.isEmpty }.last ?? "2") ?? 2
                 continue
             }
+            if header.hasPrefix("LUT_") { continue } // skip LUT_1D_SIZE / DOMAIN_MIN etc.
             let parts = trimmed.components(separatedBy: .whitespaces)
                 .filter { !$0.isEmpty }
             if parts.count == 3,
                let r = Float(parts[0]),
                let g = Float(parts[1]),
                let b = Float(parts[2]) {
-                entries.append(simd_float3(r, g, b))
+                entries.append(SIMD3<Float>(r, g, b))
             }
         }
 
         guard entries.count == size * size * size else { return nil }
 
-        // Build data provider for CIColorCube
         var cubeData = Data()
+        cubeData.reserveCapacity(entries.count * 16)
         for entry in entries {
-            var r = entry.x; var g = entry.y; var b = entry.z
-            cubeData.append(Data(bytes: &r, count: 4))
-            cubeData.append(Data(bytes: &g, count: 4))
-            cubeData.append(Data(bytes: &b, count: 4))
+            var rgba = SIMD4<Float>(entry.x, entry.y, entry.z, 1.0)
+            cubeData.append(UnsafeBufferPointer(start: &rgba, count: 1))
         }
-
-        let dataProvider = CGDataProvider(data: cubeData as CFData)!
-        let colorspace = CGColorSpaceCreateDeviceRGB()
-
-        guard let cgImage = CGImage(
-            width: size * size,
-            height: size,
-            bitsPerComponent: 32,
-            bitsPerPixel: 96,
-            bytesPerRow: size * size * 12,
-            space: colorspace,
-            bitmapInfo: CGBitmapInfo(rawValue: 0),
-            provider: dataProvider,
-            decode: nil,
-            shouldInterpolate: false,
-            intent: .defaultIntent
-        ) else { return nil }
-
-        return CIImage(cgImage: cgImage)
+        return (size, cubeData)
     }
 
-    private func applyColorCube(image: CIImage, cube: CIImage, intensity: Double) -> CIImage {
+    private func applyColorCube(image: CIImage,
+                                dimension: Int,
+                                cubeData: Data,
+                                intensity: Double) -> CIImage {
         let filter = CIFilter.colorCubeWithColorSpace()
         filter.inputImage = image
-        filter.cubeData = cube
-        filter.intensity = Float(intensity)
-        return filter.outputImage ?? image
+        filter.cubeData = cubeData
+        filter.cubeDimension = Float(dimension)
+        filter.colorSpace = CGColorSpace(name: CGColorSpace.sRGB)!
+
+        guard let lutImage = filter.outputImage else { return image }
+
+        // Full strength
+        if intensity >= 1.0 { return lutImage }
+
+        // Partial strength: crossfade between the LUT result and the original
+        // using a constant mask.
+        let mask = CIImage(color: CIColor(red: intensity,
+                                          green: intensity,
+                                          blue: intensity))
+            .cropped(to: image.extent)
+        return lutImage.applyingFilter("CIBlendWithMask", parameters: [
+            kCIInputBackgroundImageKey: image,
+            kCIInputMaskImageKey: mask
+        ])
     }
 
     // MARK: - Built-in Transforms
@@ -159,8 +157,9 @@ class LUTApplier: ObservableObject {
     // MARK: - Render
 
     func render(image: CIImage, to size: CGSize) -> UIImage? {
-        let scaled = image.transformed(by: CGAffineTransform(scaleX: size.width / image.extent.width,
-                                                            y: size.height / image.extent.height))
+        let sx = size.width / image.extent.width
+        let sy = size.height / image.extent.height
+        let scaled = image.transformed(by: CGAffineTransform(scaleX: sx, y: sy))
         guard let cgImage = context.createCGImage(scaled, from: scaled.extent) else { return nil }
         return UIImage(cgImage: cgImage)
     }

@@ -108,28 +108,24 @@ struct ModelRow: View {
 
             // Action buttons
             HStack(spacing: 10) {
-                if !model.isDownloaded {
-                    actionButton("下载", color: champagneGold) {
-                        aiModelRegistry.downloadModel(model)
-                    }
-                } else {
+                if model.isDownloaded {
                     if !model.isDefault {
                         actionButton("设为默认", color: .white) {
-                            aiModelRegistry.setDefault(model)
+                            aiModelRegistry.setDefault(model.id, for: model.category)
                         }
                     }
                     actionButton(testing ? "测试中..." : "运行测试", color: .cyan) {
                         testing = true
                         DispatchQueue.main.asyncAfter(deadline: .now() + 2) { testing = false }
                     }
-                    if model.canUninstall {
-                        actionButton("卸载", color: .red) {
-                            aiModelRegistry.uninstallModel(model)
-                        }
-                    }
-                }
-                actionButton("查看来源", color: .white.opacity(0.6)) {
-                    aiModelRegistry.viewSource(model)
+                } else {
+                    // Models are bundled; there is no runtime download.
+                    Text("随包内置")
+                        .font(.system(size: 11, weight: .medium))
+                        .foregroundColor(.white.opacity(0.4))
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 6)
+                        .background(Capsule().stroke(Color.white.opacity(0.25), lineWidth: 1))
                 }
             }
         }

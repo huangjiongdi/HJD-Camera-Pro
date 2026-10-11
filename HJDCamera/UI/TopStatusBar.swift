@@ -65,14 +65,15 @@ struct TopStatusBar: View {
         Button {
             cycleFlashMode()
         } label: {
-            Image(systemName: flashIconName)
+            let mode = AppState.shared.flashMode
+            Image(systemName: flashIcon(for: mode))
                 .font(.system(size: 16, weight: .medium))
-                .foregroundColor(appState.flashMode == .off ? .gray : champagneGold)
+                .foregroundColor(mode == .off ? .gray : champagneGold)
         }
     }
 
-    private var flashIconName: String {
-        switch appState.flashMode {
+    private func flashIcon(for mode: AVCaptureDevice.FlashMode) -> String {
+        switch mode {
         case .off: return "bolt.slash.fill"
         case .on: return "bolt.fill"
         case .auto: return "bolt.badge.a.fill"
@@ -81,11 +82,11 @@ struct TopStatusBar: View {
     }
 
     private func cycleFlashMode() {
-        switch appState.flashMode {
-        case .off: appState.flashMode = .auto
-        case .auto: appState.flashMode = .on
-        case .on: appState.flashMode = .off
-        @unknown default: appState.flashMode = .auto
+        switch AppState.shared.flashMode {
+        case .off: AppState.shared.flashMode = .auto
+        case .auto: AppState.shared.flashMode = .on
+        case .on: AppState.shared.flashMode = .off
+        @unknown default: AppState.shared.flashMode = .auto
         }
     }
 
@@ -121,13 +122,13 @@ struct TopStatusBar: View {
     private var centerInfo: some View {
         switch appState.currentMode {
         case .photo:
-            Text("\(settingsStore.photoAspectRatio.rawValue) · \(settingsStore.photoFormat.rawValue) · \(settingsStore.photoResolution)MP")
+            Text("\(settingsStore.defaultAspectRatio.rawValue) · \(settingsStore.defaultFormat.rawValue) · \(settingsStore.photoResolution)")
         case .portrait:
-            Text("人像 · \(settingsStore.photoAspectRatio.rawValue) · f/\(settingsStore.portraitAperture)")
+            Text("人像 · \(settingsStore.defaultAspectRatio.rawValue) · f/\(String(format: "%.1f", settingsStore.apertureSimulation))")
         case .video, .slowMotion:
             Text("\(settingsStore.videoResolution) · \(settingsStore.videoFrameRate)fps · \(settingsStore.videoCodec.rawValue)\(settingsStore.videoHDR ? " · HDR" : "")")
         case .night:
-            Text("夜景 · \(settingsStore.nightPreset.rawValue) · \(settingsStore.nightFrameCount)帧")
+            Text("夜景 · \(settingsStore.nightHandholdMode.rawValue) · \(settingsStore.nightFrameCount)帧")
         case .superMoon:
             Text(appState.lunarDetected ? "月亮已识别 · \(appState.lunarTracking ? "跟踪中" : "待锁定")" : "未检测到月亮")
         case .macro:

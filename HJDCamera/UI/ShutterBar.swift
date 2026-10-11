@@ -55,7 +55,7 @@ struct ShutterBar: View {
             // Right: camera flip
             Button {
                 cameraManager.switchCamera()
-                hapticEngine.impact()
+                hapticEngine.selectionChanged()
             } label: {
                 Image(systemName: "arrow.triangle.2.circlepath.camera")
                     .font(.system(size: 22))
@@ -107,7 +107,7 @@ struct ShutterBar: View {
     }
 
     private func shutterAction() {
-        hapticEngine.shutter()
+        hapticEngine.trigger(.shutter)
         if appState.currentMode.isVideoMode {
             if appState.isRecording {
                 cameraManager.stopRecording()
@@ -140,7 +140,7 @@ struct ShutterBar: View {
                     let selected = settingsStore.macroMode == mode
                     Button {
                         settingsStore.macroMode = mode
-                        hapticEngine.impact()
+                        hapticEngine.selectionChanged()
                     } label: {
                         Text(mode.rawValue)
                             .font(.system(size: 11, weight: selected ? .semibold : .regular))

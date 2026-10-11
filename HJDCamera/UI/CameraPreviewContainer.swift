@@ -23,11 +23,11 @@ struct CameraPreviewContainer: View {
         GeometryReader { geo in
             ZStack {
                 // Live preview layer
-                CameraPreviewView()
+                CameraPreviewView(session: cameraManager.session)
                     .environmentObject(cameraManager)
 
                 // Assistive overlays
-                if settingsStore.gridType != .off {
+                if settingsStore.gridEnabled {
                     AssistiveOverlays()
                         .environmentObject(appState)
                         .environmentObject(settingsStore)

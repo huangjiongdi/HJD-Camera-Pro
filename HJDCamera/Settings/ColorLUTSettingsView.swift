@@ -3,7 +3,7 @@
 //  HJD Camera Pro
 //
 //  Color and LUT settings: default LUT, intensity, import .cube files,
-//  film simulation toggles, color grading.
+//  color-space and grading toggles.
 //
 
 import SwiftUI
@@ -14,7 +14,7 @@ struct ColorLUTSettingsView: View {
 
     private let champagneGold = Color(red: 0.85, green: 0.75, blue: 0.55)
 
-    var body: some Form {
+    var body: some View {
         Form {
             Section("默认LUT") {
                 NavigationLink {
@@ -24,45 +24,30 @@ struct ColorLUTSettingsView: View {
                     HStack {
                         Text("当前LUT")
                         Spacer()
-                        Text(settingsStore.activeLUTName)
+                        Text(lutManager.activeLUTName)
                             .foregroundColor(champagneGold)
                     }
                 }
                 HStack {
                     Text("强度")
                     Spacer()
-                    Slider(value: $settingsStore.lUTIntensity, in: 0...1)
+                    Slider(value: $settingsStore.lutStrength, in: 0...1)
                         .tint(champagneGold).frame(width: 120)
-                    Text(String(format: "%.0f%%", settingsStore.lUTIntensity * 100))
+                    Text(String(format: "%.0f%%", settingsStore.lutStrength * 100))
                         .font(.system(size: 12, design: .monospaced))
                 }
             }
 
-            Section("胶片模拟") {
-                Toggle("富士胶片模拟", isOn: $settingsStore.fujiFilmSimulation)
-                Toggle("柯达胶片模拟", isOn: $settingsStore.kodakFilmSimulation)
-                Toggle("电影级调色", isOn: $settingsStore.cinematicGrade)
+            Section("色彩空间") {
+                Toggle("LOG 还原", isOn: $settingsStore.logRestore)
+                Toggle("HDR 转换", isOn: $settingsStore.hdrConversion)
+                Toggle("P3 广色域", isOn: $settingsStore.useP3)
             }
 
             Section("色彩") {
-                HStack {
-                    Text("饱和度")
-                    Spacer()
-                    Slider(value: $settingsStore.saturation, in: 0...2)
-                        .tint(champagneGold).frame(width: 120)
-                }
-                HStack {
-                    Text("对比度")
-                    Spacer()
-                    Slider(value: $settingsStore.contrast, in: 0...2)
-                        .tint(champagneGold).frame(width: 120)
-                }
-                HStack {
-                    Text("色温偏移")
-                    Spacer()
-                    Slider(value: $settingsStore.colorTempShift, in: -100...100)
-                        .tint(champagneGold).frame(width: 120)
-                }
+                sliderRow("高光压缩", value: $settingsStore.highlightCompression)
+                sliderRow("暗部色调", value: $settingsStore.shadowTint)
+                sliderRow("肤色保护", value: $settingsStore.skinProtection)
             }
 
             Section("导入LUT") {
@@ -80,8 +65,21 @@ struct ColorLUTSettingsView: View {
         .navigationBarTitleDisplayMode(.inline)
         .toolbarColorScheme(.dark, for: .navigationBar)
     }
+
+    private func sliderRow(_ label: String, value: Binding<Double>) -> some View {
+        HStack {
+            Text(label)
+            Spacer()
+            Slider(value: value, in: 0...1)
+                .tint(champagneGold).frame(width: 120)
+            Text(String(format: "%.0f%%", value.wrappedValue * 100))
+                .font(.system(size: 12, design: .monospaced))
+        }
+    }
 }
 
 #Preview {
     NavigationStack { ColorLUTSettingsView() }
+        .environmentObject(AppSettingsStore.shared)
+        .environmentObject(LUTManager.shared)
 }

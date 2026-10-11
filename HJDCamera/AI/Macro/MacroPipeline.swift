@@ -24,13 +24,13 @@ final class MacroPipeline: ObservableObject {
     func process(frames: [CIImage],
                  mode: MacroMode = .fast,
                  completion: @escaping (CIImage?) -> Void) {
-        state = .running
+        state = .processing(progress: 0)
         progress = 0
 
         processingQueue.async { [weak self] in
             guard let self = self, !frames.isEmpty else {
                 DispatchQueue.main.async {
-                    self?.state = .failed
+                    self?.state = .failed(error: "微距处理失败")
                     completion(nil)
                 }
                 return

@@ -39,11 +39,11 @@ final class LunarExposureController {
 
         // 高光恢复
         let recovered = adjusted.applyingFilter("CIToneCurve", parameters: [
-            kCIInputPoint0: CIVector(x: 0, y: 0),
-            kCIInputPoint1: CIVector(x: 0.3, y: 0.3),
-            kCIInputPoint2: CIVector(x: 0.6, y: 0.55),
-            kCIInputPoint3: CIVector(x: 0.85, y: 0.75),
-            kCIInputPoint4: CIVector(x: 1, y: 0.85)
+            "inputPoint0": CIVector(x: 0, y: 0),
+            "inputPoint1": CIVector(x: 0.3, y: 0.3),
+            "inputPoint2": CIVector(x: 0.6, y: 0.55),
+            "inputPoint3": CIVector(x: 0.85, y: 0.75),
+            "inputPoint4": CIVector(x: 1, y: 0.85)
         ])
 
         return ExposureResult(

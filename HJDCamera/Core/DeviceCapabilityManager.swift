@@ -44,7 +44,8 @@ final class DeviceCapabilityManager {
     }
 
     var switchOverFactors: [CGFloat] {
-        virtualDevice?.virtualDeviceSwitchOverVideoZoomFactors ?? []
+        (virtualDevice?.virtualDeviceSwitchOverVideoZoomFactors ?? [])
+            .map { CGFloat($0.doubleValue) }
     }
 
     // MARK: - Video Formats
@@ -143,7 +144,7 @@ final class DeviceCapabilityManager {
             "supportsProRes": supportsProRes(),
             "supportsHDR": supportsHDR(device: virtualDevice),
             "maxPhotoMP": maxPhotoResolution,
-            "switchOverFactors": switchOverFactors.map { $0.doubleValue },
+            "switchOverFactors": switchOverFactors.map { Double($0) },
             "iOS": UIDevice.current.systemVersion,
         ]
     }

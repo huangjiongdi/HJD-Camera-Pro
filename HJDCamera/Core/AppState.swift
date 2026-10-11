@@ -5,6 +5,7 @@
 
 import SwiftUI
 import Combine
+import AVFoundation
 
 final class AppState: ObservableObject {
     static let shared = AppState()

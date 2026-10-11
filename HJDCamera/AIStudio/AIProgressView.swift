@@ -2,7 +2,7 @@
 //  AIProgressView.swift
 //  HJD Camera Pro
 //
-//  Processing progress overlay: progress bar, cancel button, estimated
+//  Processing progress overlay: progress ring, cancel button, estimated
 //  remaining time, current step description.
 //
 
@@ -13,6 +13,17 @@ struct AIProgressView: View {
     @Environment(\.dismiss) private var dismiss
 
     private let champagneGold = Color(red: 0.85, green: 0.75, blue: 0.55)
+
+    private var progress: Double {
+        aiProcessingQueue.currentTask?.progress ?? 0
+    }
+
+    private var step: String {
+        if let task = aiProcessingQueue.currentTask {
+            return task.modelName.isEmpty ? "正在处理…" : task.modelName
+        }
+        return "正在处理…"
+    }
 
     var body: some View {
         ZStack {
@@ -26,7 +37,7 @@ struct AIProgressView: View {
                         .stroke(Color.white.opacity(0.1), lineWidth: 4)
                         .frame(width: 80, height: 80)
                     Circle()
-                        .trim(from: 0, to: aiProcessingQueue.currentProgress)
+                        .trim(from: 0, to: progress)
                         .stroke(champagneGold, style: StrokeStyle(lineWidth: 4, lineCap: .round))
                         .frame(width: 80, height: 80)
                         .rotationEffect(.degrees(-90))
@@ -37,29 +48,27 @@ struct AIProgressView: View {
 
                 // Status text
                 VStack(spacing: 8) {
-                    Text(aiProcessingQueue.currentStep)
+                    Text(step)
                         .font(.system(size: 16, weight: .semibold))
                         .foregroundColor(.white)
-                    Text("\(Int(aiProcessingQueue.currentProgress * 100))%")
+                    Text("\(Int(progress * 100))%")
                         .font(.system(size: 24, weight: .bold, design: .monospaced))
                         .foregroundColor(champagneGold)
                 }
 
                 // Progress bar
-                ProgressView(value: aiProcessingQueue.currentProgress)
+                ProgressView(value: progress)
                     .tint(champagneGold)
                     .frame(width: 240)
 
                 // Estimated time
-                if let remaining = aiProcessingQueue.estimatedRemaining {
-                    Text("预计剩余 \(formatTime(remaining))")
-                        .font(.system(size: 13))
-                        .foregroundColor(.white.opacity(0.6))
-                }
+                Text("预计剩余 \(formatTime(aiProcessingQueue.estimatedRemainingTime()))")
+                    .font(.system(size: 13))
+                    .foregroundColor(.white.opacity(0.6))
 
                 // Cancel button
                 Button {
-                    aiProcessingQueue.cancelCurrent()
+                    aiProcessingQueue.cancelAll()
                 } label: {
                     Text("取消")
                         .font(.system(size: 14, weight: .medium))
@@ -81,4 +90,5 @@ struct AIProgressView: View {
 
 #Preview {
     AIProgressView()
+        .environmentObject(AIProcessingQueue.shared)
 }

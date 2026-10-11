@@ -19,10 +19,8 @@ struct AssistiveOverlays: View {
         GeometryReader { geo in
             ZStack {
                 // Grid
-                if settingsStore.gridType == .thirds {
+                if settingsStore.gridEnabled {
                     thirdsGrid(size: geo.size)
-                } else if settingsStore.gridType == .golden {
-                    goldenGrid(size: geo.size)
                 }
 
                 // Horizon level
@@ -31,12 +29,12 @@ struct AssistiveOverlays: View {
                 }
 
                 // Zebra stripes
-                if settingsStore.zebraEnabled {
+                if settingsStore.zebraStripes {
                     zebraOverlay(size: geo.size)
                 }
 
                 // Focus peaking
-                if settingsStore.focusPeakingEnabled {
+                if settingsStore.focusPeaking {
                     peakingOverlay(size: geo.size)
                 }
 
@@ -46,7 +44,7 @@ struct AssistiveOverlays: View {
                 }
 
                 // Motion blur warning
-                if settingsStore.motionWarningEnabled && appState.currentMode == .night {
+                if appState.currentMode == .night {
                     motionWarning
                 }
             }

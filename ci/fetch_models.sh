@@ -1,141 +1,122 @@
 #!/bin/bash
-# fetch_models.sh - Download all CoreML models for HJD Camera Pro
-# Models are MERGED into the app bundle (final IPA contains everything).
-# Fetched at build time due to large size.
-set -e
+# fetch_models.sh - Download ALL CoreML models for HJD Camera Pro
+#
+# Models are MERGED into the app bundle: the final IPA contains every model
+# (no runtime download). They are fetched at build time purely because of size.
+#
+# All paths below have been verified against the HF repo trees. A failed
+# download aborts the build so we never ship a "complete" IPA missing a model.
+set -euo pipefail
 
 MODELS_DIR="HJDCamera/Resources/Models"
 mkdir -p "$MODELS_DIR"
 
 HF="https://huggingface.co"
 
-echo "============================================"
-echo "  HJD Camera Pro - AI Model Fetcher"
-echo "============================================"
+CURL_OPTS=(--retry 3 --retry-delay 5 --connect-timeout 30 --max-time 1800 -fsSL)
 
-# Robust download with retry
-dl() {
-  local url="$1" dest="$2" name="$3"
-  if [ -f "$dest" ]; then
-    echo "  [SKIP] $name"
-    return 0
-  fi
-  echo "  [DL] $name"
-  if curl -fSL --retry 3 --retry-delay 5 --connect-timeout 30 --max-time 600 -o "$dest" "$url" 2>/dev/null; then
-    local sz=$(du -h "$dest" 2>/dev/null | cut -f1 || echo "?")
-    echo "  [OK] $name ($sz)"
-    return 0
-  else
-    echo "  [FAIL] $name"
-    rm -f "$dest"
-    return 1
-  fi
-}
+cleanup() { rm -rf "$MODELS_DIR/__MACOSX" "$MODELS_DIR"/*.zip; }
+trap cleanup EXIT
 
-# Download .mlmodel.zip and unzip
-dl_mlmodel_zip() {
+# Download a zip from a repo and unzip it into the models dir (zip -> mlmodel/mlpackage).
+dl_zip() {
   local repo="$1" file="$2" name="$3"
-  local tmp="/tmp/hjd_$$_$file"
+  local tmp; tmp="$(mktemp)"
   echo "  [DL] $name"
-  if curl -fSL --retry 3 --retry-delay 5 --connect-timeout 30 --max-time 600 -o "$tmp" "$HF/$repo/resolve/main/$file" 2>/dev/null; then
-    unzip -q -o "$tmp" -d "$MODELS_DIR" 2>/dev/null || true
-    rm -f "$tmp"
-    rm -rf "$MODELS_DIR/__MACOSX"
-    local sz=$(du -sh "$MODELS_DIR" 2>/dev/null | cut -f1)
-    echo "  [OK] $name (total: $sz)"
-    return 0
-  else
-    echo "  [FAIL] $name"
-    rm -f "$tmp"
-    return 1
-  fi
+  curl "${CURL_OPTS[@]}" -o "$tmp" "$HF/$repo/resolve/main/$file"
+  unzip -q -o "$tmp" -d "$MODELS_DIR"
+  rm -f "$tmp"
+  echo "  [OK] $name"
 }
 
-# Download mlpackage file tree
-dl_package() {
-  local repo="$1" pkg="$2"
-  shift 2
+# Download a single file (e.g. a bare .mlmodel) from a repo.
+dl_file() {
+  local repo="$1" file="$2" name="$3"
+  echo "  [DL] $name"
+  curl "${CURL_OPTS[@]}" -o "$MODELS_DIR/$file" "$HF/$repo/resolve/main/$file"
+  echo "  [OK] $name"
+}
+
+# Download a .mlpackage by its standard file tree:
+#   <pkg>/Manifest.json
+#   <pkg>/Data/com.apple.CoreML/model.mlmodel
+#   <pkg>/Data/com.apple.CoreML/weights/weight.bin   (optional; "no" to skip)
+dl_pkg() {
+  local repo="$1" pkg="$2" weights="$3"
+  local pkgdir="$MODELS_DIR/$pkg"
+  local base="$pkgdir/Data/com.apple.CoreML"
+  local url="$HF/$repo/resolve/main/$pkg"
   echo "  [DL] $pkg"
-  local ok=1
-  for full in "$@"; do
-    local rel="${full#$pkg/}"
-    mkdir -p "$MODELS_DIR/$pkg/$(dirname "$rel")"
-    if ! curl -fSL --retry 3 --retry-delay 5 --connect-timeout 30 --max-time 600 \
-         -o "$MODELS_DIR/$pkg/$rel" "$HF/$repo/resolve/main/$full" 2>/dev/null; then
-      echo "    [FAIL] $rel"
-      ok=0
-    fi
-  done
-  if [ $ok -eq 1 ]; then
-    echo "  [OK] $pkg"
-  else
-    echo "  [PARTIAL] $pkg"
+  mkdir -p "$pkgdir" "$base/weights"
+  curl "${CURL_OPTS[@]}" -o "$pkgdir/Manifest.json" "$url/Manifest.json"
+  curl "${CURL_OPTS[@]}" -o "$base/model.mlmodel" "$url/Data/com.apple.CoreML/model.mlmodel"
+  if [ "$weights" = "yes" ]; then
+    curl "${CURL_OPTS[@]}" -o "$base/weights/weight.bin" \
+      "$url/Data/com.apple.CoreML/weights/weight.bin"
   fi
+  echo "  [OK] $pkg"
 }
 
 echo ""
-echo "=== 1. Real-ESRGAN Super Resolution ==="
-
-# TheMurusTeam models (known working CoreML)
-dl_mlmodel_zip "TheMurusTeam/coreml-upscaler-realesrgan512" "realesrgan512.mlmodel.zip" "Real-ESRGAN 512" || true
-dl_mlmodel_zip "TheMurusTeam/coreml-upscaler-realesrganAnime512" "realesrganAnime512.mlmodel.zip" "Real-ESRGAN Anime 512" || true
-
-# Alternative: direct mlmodel from various repos
-dl "$HF/TheMurusTeam/Real-ESRGAN/resolve/main/RealESRGAN_x4plus.mlmodel" \
-   "$MODELS_DIR/RealESRGAN_x4plus.mlmodel" "Real-ESRGAN x4plus" || true
-dl "$HF/TheMurusTeam/Real-ESRGAN/resolve/main/RealESRNet_x4plus.mlmodel" \
-   "$MODELS_DIR/RealESRNet_x4plus.mlmodel" "RealESRNet x4plus" || true
-dl "$HF/TheMurusTeam/Real-ESRGAN/resolve/main/RealESRGAN_General_x4v3.mlmodel" \
-   "$MODELS_DIR/RealESRGAN_General_x4v3.mlmodel" "Real-ESRGAN General x4v3" || true
+echo "=== 1. Real-ESRGAN Super Resolution (core models) ==="
+dl_zip "TheMurusTeam/coreml-upscaler-realesrgan512" "realesrgan512.mlmodel.zip" "Real-ESRGAN 512"
+dl_zip "TheMurusTeam/coreml-upscaler-realesrganAnime512" "realesrganAnime512.mlmodel.zip" "Real-ESRGAN Anime 512"
+dl_pkg "mlboydaisuke/Real-ESRGAN-x4-CoreML" "RealESRGAN_x4.mlpackage" "no"
 
 echo ""
-echo "=== 2. Denoising Models ==="
-dl_mlmodel_zip "TheMurusTeam/coreml-upscaler-MPRNetDenoising" "MPRNetDenoising.mlmodel.zip" "MPRNet Denoising" || true
-dl "$HF/john-rocklin/coreml-projects/resolve/main/MPRNet/MPRNet.mlmodel" \
-   "$MODELS_DIR/MPRNet.mlmodel" "MPRNet (alt)" || true
+echo "=== 2. Real-ESRGAN variants (x4plus / x4v3 / UltraSharp / Manga) ==="
+dl_zip "VincentGOURBIN/RealESRGAN-CoreML" "RealESRGAN-UltraSharp.mlpackage.zip" "RealESRGAN UltraSharp"
+dl_zip "VincentGOURBIN/RealESRGAN-CoreML" "RealESRGAN-x4plus.mlpackage.zip" "RealESRGAN x4plus"
+dl_zip "VincentGOURBIN/RealESRGAN-CoreML" "RealESRGAN-x4v3.mlpackage.zip" "RealESRGAN x4v3"
+dl_zip "VincentGOURBIN/RealESRGAN-CoreML" "RealESRGAN-x4v3-denoise.mlpackage.zip" "RealESRGAN x4v3 denoise"
+dl_zip "VincentGOURBIN/RealESRGAN-CoreML" "ESRGAN-MangaJPEGLQ.mlpackage.zip" "ESRGAN Manga JPEG LQ"
 
 echo ""
-echo "=== 3. Face Restoration (GFPGAN) ==="
-dl_mlmodel_zip "TheMurusTeam/coreml-upscaler-gfpgan" "gfpgan.mlmodel.zip" "GFPGAN" || true
-dl_package "mlboydaisuke/GFPGAN-CoreML" "GFPGAN.mlpackage" \
-  "GFPGAN.mlpackage/Manifest.json" \
-  "GFPGAN.mlpackage/Data/com.apple.CoreML/model.mlmodel" || true
+echo "=== 3. GAN upscalers (AESRGAN / BSRGAN) ==="
+dl_zip "TheMurusTeam/coreml-upscaler-aesrgan" "aesrgan.mlmodel.zip" "AESRGAN"
+dl_zip "TheMurusTeam/coreml-upscaler-bsrgan" "bsrgan.mlmodel.zip" "BSRGAN"
 
 echo ""
-echo "=== 4. Depth Estimation ==="
-dl_package "coreml-projects/DepthPro-coreml" "DepthPro.mlpackage" \
-  "DepthPro.mlpackage/Manifest.json" \
-  "DepthPro.mlpackage/Data/com.apple.CoreML/model.mlmodel" \
-  "DepthPro.mlpackage/Data/com.apple.CoreML/weights/weight.bin" || true
+echo "=== 4. Denoising (MPRNet) ==="
+dl_zip "TheMurusTeam/coreml-upscaler-MPRNetDenoising" "MPRNetDenoising.mlmodel.zip" "MPRNet Denoising"
 
 echo ""
-echo "=== 5. Additional SR Models (SwinIR, EDSR, etc.) ==="
-# Try alternative repos
-dl "$HF/john-rocklin/coreml-projects/resolve/main/RealESRGAN/RealESRGAN_x4plus.mlmodel" \
-   "$MODELS_DIR/RealESRGAN_x4plus_jr.mlmodel" "Real-ESRGAN x4plus (alt)" || true
+echo "=== 5. Face Restoration (GFPGAN, single copy) ==="
+dl_zip "TheMurusTeam/coreml-upscaler-gfpgan" "gfpgan.mlmodel.zip" "GFPGAN"
 
 echo ""
-echo "=== 6. Generate lightweight FSRCNN model ==="
-# FSRCNN is small enough that we create a CoreML model descriptor at runtime
-# if no pre-trained model is available. The code handles this fallback.
-echo "  [INFO] FSRCNN will use runtime fallback if not bundled"
+echo "=== 6. Depth Estimation ==="
+dl_pkg "coreml-projects/DepthPro-coreml" "DepthPro.mlpackage" "yes"
+dl_pkg "mlboydaisuke/Depth-Anything-3-Small-CoreML" "DepthAnythingV3_small_504.mlpackage" "yes"
+dl_pkg "mlboydaisuke/Depth-Anything-3-Base-CoreML" "DepthAnythingV3_base_504.mlpackage" "yes"
+dl_pkg "apple/coreml-depth-anything-v2-small" "DepthAnythingV2SmallF16.mlpackage" "yes"
+dl_pkg "apple/coreml-depth-anything-small" "DepthAnythingSmallF16.mlpackage" "yes"
 
 echo ""
-echo "=== 7. Cleanup and verify ==="
-rm -rf "$MODELS_DIR/__MACOSX"
-rm -f "$MODELS_DIR"/*.zip
+echo "=== 7. Semantic Segmentation ==="
+dl_pkg "apple/coreml-detr-semantic-segmentation" "DETRResnet50SemanticSegmentationF16.mlpackage" "yes"
+dl_pkg "apple/deeplabv3-mobilevit-small" "MobileViT_DeepLabV3.mlpackage" "yes"
+
+echo ""
+echo "=== 8. Segment Anything Model 2 (SAM2 tiny) ==="
+dl_pkg "apple/coreml-sam2.1-tiny" "SAM2_1TinyImageEncoderFLOAT16.mlpackage" "yes"
+dl_pkg "apple/coreml-sam2.1-tiny" "SAM2_1TinyMaskDecoderFLOAT16.mlpackage" "yes"
+dl_pkg "apple/coreml-sam2.1-tiny" "SAM2_1TinyPromptEncoderFLOAT16.mlpackage" "yes"
+
+echo ""
+echo "=== 9. Detection / Classification ==="
+dl_file "apple/coreml-YOLOv3" "YOLOv3FP16.mlmodel" "YOLOv3 FP16"
+dl_file "apple/coreml-resnet-50" "Resnet50FP16.mlmodel" "ResNet50 FP16"
 
 echo ""
 echo "============================================"
 echo "  Model Download Summary"
 echo "============================================"
-echo ""
-echo "Models directory:"
-find "$MODELS_DIR" -maxdepth 2 -type f -o -type d | head -50
-echo ""
-TOTAL=$(du -sh "$MODELS_DIR" 2>/dev/null | cut -f1 || echo "0")
-COUNT=$(find "$MODELS_DIR" \( -name "*.mlmodel" -o -name "*.mlpackage" \) 2>/dev/null | wc -l)
-echo "Total size: $TOTAL"
-echo "Model files: $COUNT"
-echo ""
+cleanup
+TOTAL="$(du -sh "$MODELS_DIR" | cut -f1)"
+MLMODEL_COUNT="$(find "$MODELS_DIR" -name "*.mlmodel" | wc -l | tr -d ' ')"
+PKG_COUNT="$(find "$MODELS_DIR" -maxdepth 1 -name "*.mlpackage" | wc -l | tr -d ' ')"
+echo "Total models dir size: $TOTAL"
+echo "Bare mlmodel: $MLMODEL_COUNT, mlpackage: $PKG_COUNT"
+find "$MODELS_DIR" -maxdepth 1 | sort
 echo "=== Done ==="

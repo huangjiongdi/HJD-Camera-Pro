@@ -27,7 +27,7 @@ struct ModeSelector: View {
                     // More toggle
                     Button {
                         withAnimation { showMore.toggle() }
-                        hapticEngine.impact()
+                        hapticEngine.selectionChanged()
                     } label: {
                         Image(systemName: showMore ? "chevron.down" : "chevron.up")
                             .font(.system(size: 12, weight: .semibold))
@@ -56,7 +56,7 @@ struct ModeSelector: View {
         let isSelected = appState.currentMode == mode
         return Button {
             appState.setMode(mode)
-            hapticEngine.impact()
+            hapticEngine.selectionChanged()
         } label: {
             Text(mode.rawValue)
                 .font(.system(size: isSelected ? 15 : 13, weight: isSelected ? .bold : .regular))

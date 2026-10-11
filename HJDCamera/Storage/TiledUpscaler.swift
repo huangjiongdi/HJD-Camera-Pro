@@ -38,7 +38,9 @@ final class TiledUpscaler {
         processor: TileProcessor
     ) throws -> CIImage {
         let extent = image.extent
-        guard extent.isFinite, !extent.isEmpty else {
+        guard extent.width.isFinite, extent.height.isFinite,
+              extent.width > 0, extent.height > 0,
+              !extent.isInfinite, !extent.isNull else {
             throw UpscalerError.invalidExtent
         }
 

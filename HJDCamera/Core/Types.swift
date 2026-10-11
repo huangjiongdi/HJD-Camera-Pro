@@ -140,7 +140,7 @@ enum ColorSpace: String {
 
 // MARK: - Pro Controls
 
-enum ExposureMode: String {
+enum ExposureMode: String, CaseIterable, Hashable {
     case auto = "Auto"
     case program = "P"
     case shutterPriority = "S"

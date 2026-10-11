@@ -43,14 +43,18 @@ struct VideoSettingsView: View {
             }
 
             Section("防抖与音频") {
-                Picker("防抖模式", selection: $settingsStore.stabilizationMode) {
-                    Text("关闭").tag(0)
-                    Text("标准").tag(1)
-                    Text("增强").tag(2)
-                    Text("电影级").tag(3)
+                Picker("防抖模式", selection: $settingsStore.videoStabilization) {
+                    ForEach(VideoStabilization.allCases, id: \.self) { mode in
+                        Text(mode.rawValue).tag(mode)
+                    }
                 }
-                Toggle("录音", isOn: $settingsStore.audioEnabled)
+                Picker("音频来源", selection: $settingsStore.audioSource) {
+                    ForEach(AudioSource.allCases, id: \.self) { source in
+                        Text(source.rawValue).tag(source)
+                    }
+                }
                 Toggle("风噪抑制", isOn: $settingsStore.windNoiseReduction)
+                Toggle("录制时锁定曝光", isOn: $settingsStore.lockExposureWhileRecording)
             }
 
             Section {
@@ -67,9 +71,9 @@ struct VideoSettingsView: View {
             }
 
             Section("保护机制") {
-                Toggle("过热自动停止", isOn: $settingsStore.thermalStopRecording)
+                Toggle("过热警告", isOn: $settingsStore.thermalWarning)
                 Toggle("中断自动恢复", isOn: $settingsStore.interruptionRecovery)
-                Toggle("剩余时间提醒", isOn: $settingsStore.storageWarningEnabled)
+                Toggle("低存储空间提醒", isOn: $settingsStore.lowStorageReminder)
             }
         }
         .navigationTitle("视频设置")

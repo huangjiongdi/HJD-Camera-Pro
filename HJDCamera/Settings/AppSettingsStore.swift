@@ -133,12 +133,15 @@ private enum Keys {
 
     // Night / Moon
     static let nightMultiFrame = "settings.night.multiFrame"
+    static let nightPreset = "settings.night.preset"
+    static let nightFrameCount = "settings.night.frameCount"
     static let nightHandholdMode = "settings.night.handholdMode"
     static let nightPortrait = "settings.night.portrait"
     static let nightMotionProtect = "settings.night.motionProtect"
     static let pointSourceControl = "settings.night.pointSourceControl"
     static let shadowColor = "settings.night.shadowColor"
     static let moonAutoDetect = "settings.moon.autoDetect"
+    static let lunarQualityMode = "settings.moon.qualityMode"
     static let moonTracking = "settings.moon.tracking"
     static let moonExposureProtect = "settings.moon.exposureProtect"
     static let moonUpscaleStrength = "settings.moon.upscaleStrength"
@@ -157,6 +160,7 @@ private enum Keys {
     static let hairEdge = "settings.portrait.hairEdge"
     static let backlightCompensation = "settings.portrait.backlightCompensation"
     static let macroAutoDetect = "settings.macro.autoDetect"
+    static let macroMode = "settings.macro.mode"
     static let macroFocusAssist = "settings.macro.focusAssist"
     static let macroStabilization = "settings.macro.stabilization"
     static let focusStacking = "settings.macro.focusStacking"
@@ -200,7 +204,7 @@ private enum Keys {
     static let exportToLibrary = "settings.storage.exportToLibrary"
     static let preserveMetadata = "settings.storage.preserveMetadata"
     static let watermarkStyle = "settings.storage.watermarkStyle"
-    static let defaultFormat = "settings.storage.defaultFormat"
+    static let storageDefaultFormat = "settings.storage.defaultFormat"
     static let maxUpscalePixels = "settings.storage.maxUpscalePixels"
     static let storageWarningThreshold = "settings.storage.warningThreshold"
     static let cacheCleanupOnExit = "settings.storage.cacheCleanupOnExit"
@@ -422,6 +426,12 @@ final class AppSettingsStore: ObservableObject {
     @Published var nightMultiFrame: Bool = true {
         didSet { defaults.set(nightMultiFrame, forKey: Keys.nightMultiFrame) }
     }
+    @Published var nightPreset: NightPreset = .natural {
+        didSet { defaults.set(nightPreset.rawValue, forKey: Keys.nightPreset) }
+    }
+    @Published var nightFrameCount: Int = 10 {
+        didSet { defaults.set(nightFrameCount, forKey: Keys.nightFrameCount) }
+    }
     @Published var nightHandholdMode: NightHandholdMode = .handheld {
         didSet { defaults.set(nightHandholdMode.rawValue, forKey: Keys.nightHandholdMode) }
     }
@@ -439,6 +449,9 @@ final class AppSettingsStore: ObservableObject {
     }
     @Published var moonAutoDetect: Bool = true {
         didSet { defaults.set(moonAutoDetect, forKey: Keys.moonAutoDetect) }
+    }
+    @Published var lunarQualityMode: LunarQualityMode = .realSurface {
+        didSet { defaults.set(lunarQualityMode.rawValue, forKey: Keys.lunarQualityMode) }
     }
     @Published var moonTracking: Bool = true {
         didSet { defaults.set(moonTracking, forKey: Keys.moonTracking) }
@@ -490,6 +503,9 @@ final class AppSettingsStore: ObservableObject {
     }
     @Published var macroAutoDetect: Bool = true {
         didSet { defaults.set(macroAutoDetect, forKey: Keys.macroAutoDetect) }
+    }
+    @Published var macroMode: MacroMode = .fast {
+        didSet { defaults.set(macroMode.rawValue, forKey: Keys.macroMode) }
     }
     @Published var macroFocusAssist: Bool = true {
         didSet { defaults.set(macroFocusAssist, forKey: Keys.macroFocusAssist) }
@@ -612,7 +628,7 @@ final class AppSettingsStore: ObservableObject {
         didSet { defaults.set(watermarkStyle.rawValue, forKey: Keys.watermarkStyle) }
     }
     @Published var defaultStorageFormat: PhotoFormat = .heif {
-        didSet { defaults.set(defaultStorageFormat.rawValue, forKey: Keys.defaultFormat) }
+        didSet { defaults.set(defaultStorageFormat.rawValue, forKey: Keys.storageDefaultFormat) }
     }
     @Published var maxUpscalePixels: Int = 120_000_000 {
         didSet { defaults.set(maxUpscalePixels, forKey: Keys.maxUpscalePixels) }
@@ -766,12 +782,15 @@ final class AppSettingsStore: ObservableObject {
         interruptRecovery = defaults.bool(forKey: Keys.interruptRecovery, fallback: true)
 
         nightMultiFrame = defaults.bool(forKey: Keys.nightMultiFrame, fallback: true)
+        nightPreset = NightPreset(rawValue: defaults.string(forKey: Keys.nightPreset) ?? "") ?? .natural
+        nightFrameCount = defaults.integer(forKey: Keys.nightFrameCount, fallback: 10)
         nightHandholdMode = NightHandholdMode(rawValue: defaults.string(forKey: Keys.nightHandholdMode) ?? "") ?? .handheld
         nightPortrait = defaults.bool(forKey: Keys.nightPortrait, fallback: true)
         nightMotionProtect = defaults.bool(forKey: Keys.nightMotionProtect, fallback: true)
         pointSourceControl = defaults.bool(forKey: Keys.pointSourceControl, fallback: true)
         shadowColor = defaults.double(forKey: Keys.shadowColor, fallback: 0.4)
         moonAutoDetect = defaults.bool(forKey: Keys.moonAutoDetect, fallback: true)
+        lunarQualityMode = LunarQualityMode(rawValue: defaults.string(forKey: Keys.lunarQualityMode) ?? "") ?? .realSurface
         moonTracking = defaults.bool(forKey: Keys.moonTracking, fallback: true)
         moonExposureProtect = defaults.double(forKey: Keys.moonExposureProtect, fallback: 0.5)
         moonUpscaleStrength = defaults.double(forKey: Keys.moonUpscaleStrength, fallback: 0.6)
@@ -789,6 +808,7 @@ final class AppSettingsStore: ObservableObject {
         hairEdge = defaults.bool(forKey: Keys.hairEdge, fallback: true)
         backlightCompensation = defaults.bool(forKey: Keys.backlightCompensation, fallback: true)
         macroAutoDetect = defaults.bool(forKey: Keys.macroAutoDetect, fallback: true)
+        macroMode = MacroMode(rawValue: defaults.string(forKey: Keys.macroMode) ?? "") ?? .fast
         macroFocusAssist = defaults.bool(forKey: Keys.macroFocusAssist, fallback: true)
         macroStabilization = defaults.bool(forKey: Keys.macroStabilization, fallback: true)
         focusStacking = defaults.bool(forKey: Keys.focusStacking)
@@ -829,7 +849,7 @@ final class AppSettingsStore: ObservableObject {
         exportToLibrary = defaults.bool(forKey: Keys.exportToLibrary, fallback: true)
         preserveMetadata = defaults.bool(forKey: Keys.preserveMetadata, fallback: true)
         watermarkStyle = WatermarkStyle(rawValue: defaults.string(forKey: Keys.watermarkStyle) ?? "") ?? .none
-        defaultStorageFormat = PhotoFormat(rawValue: defaults.string(forKey: Keys.defaultFormat) ?? "") ?? .heif
+        defaultStorageFormat = PhotoFormat(rawValue: defaults.string(forKey: Keys.storageDefaultFormat) ?? "") ?? .heif
         maxUpscalePixels = defaults.integer(forKey: Keys.maxUpscalePixels, fallback: 120_000_000)
         storageWarningThreshold = defaults.object(forKey: Keys.storageWarningThreshold) as? Int64 ?? 1_000_000_000
         cacheCleanupOnExit = defaults.bool(forKey: Keys.cacheCleanupOnExit, fallback: true)

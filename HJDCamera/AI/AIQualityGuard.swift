@@ -76,9 +76,9 @@ final class AIQualityGuard {
     private func detectHalo(original: CIImage, processed: CIImage) -> Double {
         // 在强边缘附近检测亮度过冲
         let edgeMap = edgeMagnitude(processed)
-        let brightRing = edgeMap.filtered(
-            using: CIFilter(name: "CIGaussianBlur",
-                           parameters: [kCIInputRadiusKey: 3.0])
+        let brightRing = edgeMap.applyingFilter(
+            "CIGaussianBlur",
+            parameters: [kCIInputRadiusKey: 3.0]
         )
         // 简化：返回边缘密度作为光晕指标
         return edgeDensity(brightRing)

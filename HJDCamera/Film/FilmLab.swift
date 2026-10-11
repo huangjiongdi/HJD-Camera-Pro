@@ -70,8 +70,9 @@ class FilmLab: ObservableObject {
 
     private func applyGrain(_ image: CIImage) -> CIImage {
         let noise = CIFilter.randomGenerator()
-        noise.extent = image.extent
-        guard let noiseImage = noise.outputImage else { return image }
+        guard let noiseImage = noise.outputImage?.cropped(to: image.extent) else {
+            return image
+        }
         let blend = CIFilter.overlayBlendMode()
         blend.inputImage = noiseImage
         blend.backgroundImage = image

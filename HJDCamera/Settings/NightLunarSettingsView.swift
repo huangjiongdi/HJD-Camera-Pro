@@ -25,9 +25,9 @@ struct NightLunarSettingsView: View {
                 HStack {
                     Text("降噪强度")
                     Spacer()
-                    Slider(value: $settingsStore.nightDenoise, in: 0...1)
+                    Slider(value: $settingsStore.denoiseStrength, in: 0...1)
                         .tint(champagneGold).frame(width: 120)
-                    Text(String(format: "%.0f%%", settingsStore.nightDenoise * 100))
+                    Text(String(format: "%.0f%%", settingsStore.denoiseStrength * 100))
                         .font(.system(size: 12, design: .monospaced))
                         .foregroundColor(.white.opacity(0.6))
                 }
@@ -39,14 +39,14 @@ struct NightLunarSettingsView: View {
                         Text($0.rawValue).tag($0)
                     }
                 }
-                Toggle("自动月亮识别", isOn: $settingsStore.lunarAutoDetect)
-                Toggle("自动跟踪锁定", isOn: $settingsStore.lunarAutoTrack)
+                Toggle("自动月亮识别", isOn: $settingsStore.moonAutoDetect)
+                Toggle("自动跟踪锁定", isOn: $settingsStore.moonTracking)
                 HStack {
                     Text("AI融合上限")
                     Spacer()
-                    Slider(value: $settingsStore.lunarAIFusionCap, in: 0...1)
+                    Slider(value: $settingsStore.moonUpscaleStrength, in: 0...1)
                         .tint(champagneGold).frame(width: 120)
-                    Text(String(format: "%.0f%%", settingsStore.lunarAIFusionCap * 100))
+                    Text(String(format: "%.0f%%", settingsStore.moonUpscaleStrength * 100))
                         .font(.system(size: 12, design: .monospaced))
                 }
             } footer: {

@@ -51,8 +51,7 @@ final class ModelRegressionTest {
             } catch {
                 failures += 1
                 DiagnosticLogger.shared.error(
-                    "Regression sample failed: \(error.localizedDescription)",
-                    category: .ai
+                    "Regression sample failed: \(error.localizedDescription)"
                 )
             }
         }

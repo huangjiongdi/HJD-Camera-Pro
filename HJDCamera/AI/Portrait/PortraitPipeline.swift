@@ -22,7 +22,7 @@ final class PortraitPipeline: ObservableObject {
 
     /// 完整人像处理。
     func process(image: CIImage, completion: @escaping (CIImage?) -> Void) {
-        state = .running
+        state = .processing(progress: 0)
         progress = 0
 
         processingQueue.async { [weak self] in

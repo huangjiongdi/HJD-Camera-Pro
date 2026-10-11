@@ -39,7 +39,7 @@ final class SlowMotionController: ObservableObject {
 
     private let device = CameraManager.shared.currentDevice
 
-    private override init() {
+    private init() {
         availableSpec = SlowMotionController.resolveBestSpec(for: CameraManager.shared.currentDevice)
         canCaptureNative4K240 = availableSpec.resolution == "4K" && availableSpec.frameRate >= 240
     }

@@ -22,28 +22,28 @@ final class LiveQualityController: ObservableObject {
     func evaluate(fps: Double,
                   thermalState: ProcessInfo.ThermalState,
                   memoryUsage: Double) -> LivePreviewLevel {
-        var level: LivePreviewLevel = .high
+        var level: LivePreviewLevel = .highDetail
 
         // 温度降级
         switch thermalState {
-        case .nominal: level = .high
+        case .nominal: level = .highDetail
         case .fair: level = .balanced
-        case .serious: level = .low
+        case .serious: level = .smooth
         case .critical: level = .off
         @unknown default: break
         }
 
         // 帧率降级
-        if fps < 25 && level == .high {
+        if fps < 25 && level == .highDetail {
             level = .balanced
         }
         if fps < 15 && level == .balanced {
-            level = .low
+            level = .smooth
         }
 
         // 内存压力降级
         if memoryUsage > 0.8 {
-            level = .low
+            level = .smooth
         }
         if memoryUsage > 0.95 {
             level = .off
@@ -59,10 +59,9 @@ final class LiveQualityController: ObservableObject {
     var suggestedIntensity: Double {
         switch currentLevel {
         case .off: return 0
-        case .low: return 0.2
+        case .smooth: return 0.2
         case .balanced: return 0.4
-        case .high: return 0.6
-        case .ultra: return 0.8
+        case .highDetail: return 0.7
         }
     }
 }

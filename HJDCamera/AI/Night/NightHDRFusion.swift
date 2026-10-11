@@ -40,11 +40,11 @@ final class NightHDRFusion {
 
         // 局部色调映射恢复高光与暗部
         let toneMapped = fused.applyingFilter("CIToneCurve", parameters: [
-            kCIInputPoint0: CIVector(x: 0, y: 0.05),
-            kCIInputPoint1: CIVector(x: 0.25, y: 0.35),
-            kCIInputPoint2: CIVector(x: 0.5, y: 0.55),
-            kCIInputPoint3: CIVector(x: 0.75, y: 0.75),
-            kCIInputPoint4: CIVector(x: 1, y: 0.95)
+            "inputPoint0": CIVector(x: 0, y: 0.05),
+            "inputPoint1": CIVector(x: 0.25, y: 0.35),
+            "inputPoint2": CIVector(x: 0.5, y: 0.55),
+            "inputPoint3": CIVector(x: 0.75, y: 0.75),
+            "inputPoint4": CIVector(x: 1, y: 0.95)
         ])
 
         return FusionResult(image: toneMapped, dynamicRange: 2.5)

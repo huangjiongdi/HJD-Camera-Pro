@@ -28,7 +28,7 @@ final class LiveFrameScheduler {
         case .nominal, .fair:
             currentLevel = .balanced
         case .serious:
-            currentLevel = .low
+            currentLevel = .smooth
         case .critical:
             currentLevel = .off
         @unknown default:
@@ -36,7 +36,7 @@ final class LiveFrameScheduler {
         }
 
         if fps < 20 {
-            currentLevel = .low
+            currentLevel = .smooth
         }
     }
 
@@ -47,12 +47,12 @@ final class LiveFrameScheduler {
         switch currentLevel {
         case .off:
             return .lightweight
-        case .low:
+        case .smooth:
             return frameCounter % 5 == 0 ? .medium : .lightweight
         case .balanced:
             if frameCounter % 10 == 0 { return .heavy }
             return frameCounter % 3 == 0 ? .medium : .lightweight
-        case .high, .ultra:
+        case .highDetail:
             if frameCounter % 5 == 0 { return .heavy }
             return frameCounter % 2 == 0 ? .medium : .lightweight
         }

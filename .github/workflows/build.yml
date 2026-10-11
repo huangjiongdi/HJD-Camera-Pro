@@ -91,7 +91,9 @@ jobs:
 
       - name: Build (signed)
         run: |
-          set +e
+          # The default Actions shell is `bash -eo pipefail`, so a failing
+          # xcodebuild makes the pipeline fail; the `||` block just prints the
+          # error summary before exiting non-zero.
           xcodebuild \
             -project HJDCamera.xcodeproj \
             -target HJDCamera \
@@ -103,13 +105,14 @@ jobs:
             PROVISIONING_PROFILE=c2619af0-8701-4afa-b741-f09f8c8820fb \
             DEVELOPMENT_TEAM=VVAG93HGLX \
             ONLY_ACTIVE_ARCH=NO \
-            2>&1 | tee build.log
-          BUILD_EXIT=$?
-          echo "=== BUILD EXIT: $BUILD_EXIT ==="
-          echo "=== ERRORS ==="
-          grep -i "error:" build.log | head -80
-          echo "=== END ERRORS ==="
-          exit $BUILD_EXIT
+            2>&1 | tee build.log || {
+              echo "=== BUILD FAILED ==="
+              echo "=== ERRORS (unique) ==="
+              grep -i "error:" build.log | sort -u | head -120 || true
+              echo "=== END ERRORS ==="
+              exit 1
+            }
+          echo "=== BUILD SUCCEEDED ==="
 
       - name: Locate app
         id: locate
@@ -120,10 +123,10 @@ jobs:
           test -n "$APP_PATH"
           ls -la "$APP_PATH"
           du -sh "$APP_PATH"
-          echo "=== App contents ==="
-          ls -la "$APP_PATH/"
-          echo "=== Models in app ==="
-          ls -la "$APP_PATH/Models/" 2>/dev/null || echo "No Models dir"
+          echo "=== Compiled models in app (root) ==="
+          MODEL_COUNT=$(find "$APP_PATH" -maxdepth 1 -name "*.mlmodelc" | wc -l | tr -d ' ')
+          echo "Compiled model count: $MODEL_COUNT"
+          ls -1 "$APP_PATH"/*.mlmodelc 2>/dev/null | xargs -I{} basename {} || true
 
       - name: Verify code signature
         run: |

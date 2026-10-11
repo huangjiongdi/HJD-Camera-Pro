@@ -38,11 +38,11 @@ final class ReflectionRemoval {
 
         // 降低高光区域亮度
         let toneMapped = image.applyingFilter("CIToneCurve", parameters: [
-            kCIInputPoint0: CIVector(x: 0, y: 0),
-            kCIInputPoint1: CIVector(x: 0.5, y: 0.5),
-            kCIInputPoint2: CIVector(x: 0.8, y: 0.65),
-            kCIInputPoint3: CIVector(x: 0.95, y: 0.75),
-            kCIInputPoint4: CIVector(x: 1, y: 0.8)
+            "inputPoint0": CIVector(x: 0, y: 0),
+            "inputPoint1": CIVector(x: 0.5, y: 0.5),
+            "inputPoint2": CIVector(x: 0.8, y: 0.65),
+            "inputPoint3": CIVector(x: 0.95, y: 0.75),
+            "inputPoint4": CIVector(x: 1, y: 0.8)
         ])
 
         // 局部对比度恢复

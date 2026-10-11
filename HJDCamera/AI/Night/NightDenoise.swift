@@ -28,7 +28,7 @@ final class NightDenoise {
     /// 执行夜景降噪。
     func denoise(image: CIImage, noiseProfile: NightNoiseEstimator.NoiseProfile) -> DenoiseResult {
         // 优先尝试 CoreML 模型
-        if let model = AIModelRegistry.shared.defaultModel(for: .denoise),
+        if let model = AIModelRegistry.shared.defaultModel(for: .nightDenoise),
            AIModelRegistry.shared.isModelAvailable(model.id) {
             let result = runCoreMLDenoise(image: image, modelID: model.id)
             if let result = result {

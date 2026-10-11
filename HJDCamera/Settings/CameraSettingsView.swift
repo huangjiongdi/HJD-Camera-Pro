@@ -2,21 +2,20 @@
 //  CameraSettingsView.swift
 //  HJD Camera Pro
 //
-//  Photo capture settings: aspect ratio, format, resolution, HDR, flash,
-//  grid, timer, RAW.
+//  Photo capture settings: aspect ratio, format, resolution, multi-frame,
+//  night multi-frame, RAW.
 //
 
 import SwiftUI
 
 struct CameraSettingsView: View {
     @EnvironmentObject var settingsStore: AppSettingsStore
-
-    private let champagneGold = Color(red: 0.85, green: 0.75, blue: 0.55)
+    @EnvironmentObject var appState: AppState
 
     var body: some View {
         Form {
             Section("照片比例") {
-                Picker("比例", selection: $settingsStore.photoAspectRatio) {
+                Picker("比例", selection: $settingsStore.defaultAspectRatio) {
                     ForEach(PhotoAspectRatio.allCases, id: \.self) { ratio in
                         Text(ratio.rawValue).tag(ratio)
                     }
@@ -25,7 +24,7 @@ struct CameraSettingsView: View {
             }
 
             Section("文件格式") {
-                Picker("格式", selection: $settingsStore.photoFormat) {
+                Picker("格式", selection: $settingsStore.defaultFormat) {
                     ForEach(PhotoFormat.allCases, id: \.self) { fmt in
                         Text(fmt.rawValue).tag(fmt)
                     }
@@ -34,21 +33,21 @@ struct CameraSettingsView: View {
 
             Section("分辨率") {
                 Picker("像素", selection: $settingsStore.photoResolution) {
-                    Text("12 MP").tag("12")
-                    Text("24 MP").tag("24")
-                    Text("48 MP").tag("48")
+                    Text("12 MP").tag("12MP")
+                    Text("24 MP").tag("24MP")
+                    Text("48 MP").tag("48MP")
                     Text("自定义").tag("custom")
                 }
             }
 
             Section {
-                Toggle("RAW 格式", isOn: $settingsStore.rawEnabled)
-                Toggle("智能HDR", isOn: $settingsStore.smartHDREnabled)
-                Toggle("夜景模式自动", isOn: $settingsStore.nightAutoEnabled)
+                Toggle("多帧融合", isOn: $settingsStore.multiFrameFusion)
+                Toggle("夜景多帧", isOn: $settingsStore.nightMultiFrame)
+                Toggle("RAW 格式", isOn: $appState.rawEnabled)
             } header: {
                 Text("高级")
             } footer: {
-                Text("RAW文件占用较大存储空间")
+                Text("RAW 文件占用较大存储空间")
             }
         }
         .navigationTitle("拍摄设置")
@@ -59,4 +58,6 @@ struct CameraSettingsView: View {
 
 #Preview {
     NavigationStack { CameraSettingsView() }
+        .environmentObject(AppSettingsStore.shared)
+        .environmentObject(AppState.shared)
 }

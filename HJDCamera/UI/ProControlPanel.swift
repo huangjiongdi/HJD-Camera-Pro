@@ -48,7 +48,7 @@ struct ProControlPanel: View {
             // Reset button
             Button {
                 resetToAuto()
-                hapticEngine.impact()
+                hapticEngine.selectionChanged()
             } label: {
                 Text("复位")
                     .font(.system(size: 14, weight: .semibold))
@@ -62,17 +62,17 @@ struct ProControlPanel: View {
         }
         .frame(maxHeight: UIScreen.main.bounds.height * 0.6)
         .background(Color(red: 0.08, green: 0.08, blue: 0.08))
-        .cornerRadius(20, corners: [.topLeft, .topRight])
+        .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
     }
 
     // MARK: - Mode Row
 
     private var modeRow: some View {
         HStack(spacing: 0) {
-            ForEach([ExposureMode.auto, .program, .aperturePriority, .shutterPriority, .manual], id: \.rawValue) { mode in
+            ForEach(modes, id: \.self) { mode in
                 Button {
                     exposureMode = mode
-                    hapticEngine.impact()
+                    hapticEngine.selectionChanged()
                 } label: {
                     Text(mode.rawValue)
                         .font(.system(size: 14, weight: exposureMode == mode ? .bold : .regular))
@@ -86,6 +86,8 @@ struct ProControlPanel: View {
         .padding(.horizontal, 16)
         .padding(.bottom, 8)
     }
+
+    private let modes: [ExposureMode] = [.auto, .program, .aperturePriority, .shutterPriority, .manual]
 
     // MARK: - Control Rows
 

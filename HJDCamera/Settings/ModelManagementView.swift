@@ -57,13 +57,13 @@ struct ModelManagementView: View {
                 HStack {
                     Text("已下载模型")
                     Spacer()
-                    Text("\(aiModelRegistry.downloadedCount) 个")
+                    Text("\(aiModelRegistry.models.filter { $0.isDownloaded }.count) 个")
                         .foregroundColor(.white.opacity(0.7))
                 }
                 HStack {
                     Text("占用空间")
                     Spacer()
-                    Text(formatSize(aiModelRegistry.totalModelSize))
+                    Text(formatSize(aiModelRegistry.models.filter { $0.isDownloaded }.reduce(Int64(0)) { $0 + $1.fileSize }))
                         .foregroundColor(.white.opacity(0.7))
                 }
             }
@@ -140,19 +140,23 @@ struct ModelManagementRow: View {
             HStack(spacing: 8) {
                 if model.isDownloaded {
                     if !model.isDefault {
-                        miniButton("设为默认", color: champagneGold) { aiModelRegistry.setDefault(model) }
+                        miniButton("设为默认", color: champagneGold) {
+                            aiModelRegistry.setDefault(model.id, for: model.category)
+                        }
                     }
                     miniButton(testing ? "测试中" : "测试", color: .cyan) {
                         testing = true
                         DispatchQueue.main.asyncAfter(deadline: .now() + 2) { testing = false }
                     }
-                    if model.canUninstall {
-                        miniButton("卸载", color: .red) { aiModelRegistry.uninstallModel(model) }
-                    }
                 } else {
-                    miniButton("下载", color: champagneGold) { aiModelRegistry.downloadModel(model) }
+                    // Models are bundled; there is no runtime download.
+                    Text("随包内置")
+                        .font(.system(size: 10, weight: .medium))
+                        .foregroundColor(.white.opacity(0.4))
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 4)
+                        .background(Capsule().stroke(Color.white.opacity(0.25)))
                 }
-                miniButton("来源", color: .gray) { aiModelRegistry.viewSource(model) }
             }
         }
         .padding(.vertical, 4)

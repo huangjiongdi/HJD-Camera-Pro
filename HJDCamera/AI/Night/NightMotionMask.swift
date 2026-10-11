@@ -21,7 +21,11 @@ final class NightMotionMask {
 
     /// 基于多帧差异生成运动掩码。
     func compute(alignedFrames: [CIImage]) -> MaskResult {
-        guard let ref = alignedFrames.first, alignedFrames.count > 1 else {
+        guard let ref = alignedFrames.first else {
+            let fullMask = CIImage(color: CIColor.white)
+            return MaskResult(mask: fullMask, motionRatio: 0)
+        }
+        guard alignedFrames.count > 1 else {
             let fullMask = CIImage(color: CIColor.white).cropped(to: ref.extent)
             return MaskResult(mask: fullMask, motionRatio: 0)
         }

@@ -61,7 +61,7 @@ final class PhotoLibraryExporter {
 
         do {
             var localId: String?
-            try PHPhotoLibrary.shared().performAndWait {
+            try await PHPhotoLibrary.shared().performChanges {
                 let creation = PHAssetCreationRequest()
                 creation.addResource(with: .photo, data: data, options: nil)
                 localId = creation.placeholderForCreatedAsset?.localIdentifier
@@ -90,7 +90,7 @@ final class PhotoLibraryExporter {
 
         do {
             var localId: String?
-            try PHPhotoLibrary.shared().performAndWait {
+            try await PHPhotoLibrary.shared().performChanges {
                 let creation = PHAssetCreationRequest()
                 creation.addResource(with: .video, fileURL: fileURL, options: nil)
                 localId = creation.placeholderForCreatedAsset?.localIdentifier

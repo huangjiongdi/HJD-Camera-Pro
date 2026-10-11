@@ -24,15 +24,15 @@ final class LunarPipeline: ObservableObject {
 
     /// 完整超级月亮处理。
     func process(frames: [CIImage],
-                qualityMode: LunarQualityMode = .balanced,
+                qualityMode: LunarQualityMode = .realSurface,
                 completion: @escaping (LunarProcessingResult?) -> Void) {
-        state = .running
+        state = .processing(progress: 0)
         progress = 0
 
         processingQueue.async { [weak self] in
             guard let self = self, !frames.isEmpty else {
                 DispatchQueue.main.async {
-                    self?.state = .failed
+                    self?.state = .failed(error: "月面处理失败")
                     completion(nil)
                 }
                 return
@@ -44,7 +44,7 @@ final class LunarPipeline: ObservableObject {
             let detection = LunarDetector.shared.detect(image: frames[0])
             guard detection.isMoon else {
                 DispatchQueue.main.async {
-                    self.state = .failed
+                    self.state = .failed(error: "未检测到月亮")
                     self.currentStage = "未检测到月亮"
                     completion(nil)
                 }

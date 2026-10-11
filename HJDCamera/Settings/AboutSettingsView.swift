@@ -12,6 +12,7 @@ struct AboutSettingsView: View {
     @EnvironmentObject var diagnosticLogger: DiagnosticLogger
     @EnvironmentObject var settingsStore: AppSettingsStore
     @State private var showResetConfirm = false
+    @State private var developerMode = false
 
     private let champagneGold = Color(red: 0.85, green: 0.75, blue: 0.55)
 
@@ -59,7 +60,7 @@ struct AboutSettingsView: View {
                 } label: {
                     Label("兼容性报告", systemImage: "info.circle")
                 }
-                Toggle("开发者模式", isOn: $settingsStore.developerMode)
+                Toggle("开发者模式", isOn: $developerMode)
             }
 
             Section {
@@ -76,7 +77,7 @@ struct AboutSettingsView: View {
         .alert("确认重置所有设置？", isPresented: $showResetConfirm) {
             Button("取消", role: .cancel) {}
             Button("重置", role: .destructive) {
-                settingsStore.resetAll()
+                settingsStore.resetToDefaults()
             }
         } message: {
             Text("此操作将恢复所有设置为默认值，不会删除照片。")
@@ -100,7 +101,7 @@ struct DiagnosticLogView: View {
         }
         .navigationTitle("诊断日志")
         .toolbarColorScheme(.dark, for: .navigationBar)
-        .onAppear { logText = diagnosticLogger.exportLogs() }
+        .onAppear { logText = diagnosticLogger.currentLogContents() }
     }
 }
 

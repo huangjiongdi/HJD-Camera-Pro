@@ -102,8 +102,8 @@ struct ZoomControlView: View {
 
     private func selectZoom(_ level: ZoomLevel) {
         appState.setZoom(level.factor, source: level.source)
-        cameraManager.setZoom(level.factor)
-        hapticEngine.zoomNode()
+        cameraManager.setZoomFactor(CGFloat(level.factor))
+        hapticEngine.trigger(.zoomNode)
         sliderValue = level.factor
     }
 
@@ -117,7 +117,7 @@ struct ZoomControlView: View {
             Slider(value: $sliderValue, in: 0.5...10, onEditingChanged: { editing in
                 if !editing {
                     appState.setZoom(sliderValue, source: sliderValue > 5 ? .hybrid : .optical)
-                    cameraManager.setZoom(sliderValue)
+                    cameraManager.setZoomFactor(CGFloat(sliderValue))
                 }
             })
             .tint(champagneGold)

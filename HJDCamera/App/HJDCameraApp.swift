@@ -15,6 +15,7 @@ struct HJDCameraApp: App {
     @StateObject private var aiProcessingQueue = AIProcessingQueue.shared
     @StateObject private var storageManager = StorageManager.shared
     @StateObject private var diagnosticLogger = DiagnosticLogger.shared
+    @StateObject private var lutManager = LUTManager.shared
 
     var body: some Scene {
         WindowGroup {
@@ -27,11 +28,13 @@ struct HJDCameraApp: App {
                 .environmentObject(aiProcessingQueue)
                 .environmentObject(storageManager)
                 .environmentObject(diagnosticLogger)
+                .environmentObject(lutManager)
                 .preferredColorScheme(.dark)
                 .statusBarHidden(true)
                 .onAppear {
                     diagnosticLogger.log("App launched", category: .app)
                     aiModelRegistry.loadBundledModels()
+                    cameraManager.startSession()
                 }
         }
     }

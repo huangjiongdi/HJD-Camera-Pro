@@ -20,8 +20,8 @@ struct HapticSettingsView: View {
                 ForEach(HapticPreset.allCases, id: \.self) { preset in
                     Button {
                         settingsStore.hapticPreset = preset
-                        hapticEngine.applyPreset(preset)
-                        hapticEngine.preview()
+                        hapticEngine.preset = preset
+                        hapticEngine.trigger(.shutter)
                     } label: {
                         HStack {
                             Text(presetName(preset))
@@ -39,7 +39,7 @@ struct HapticSettingsView: View {
             Section("单独开关") {
                 Toggle("快门", isOn: $settingsStore.hapticShutter)
                 Toggle("对焦", isOn: $settingsStore.hapticFocus)
-                Toggle("月亮锁定", isOn: $settingsStore.hapticLunarLock)
+                Toggle("月亮锁定", isOn: $settingsStore.hapticMoonLock)
                 Toggle("变焦节点", isOn: $settingsStore.hapticZoomNode)
                 Toggle("AI完成", isOn: $settingsStore.hapticAIComplete)
                 Toggle("导出完成", isOn: $settingsStore.hapticExportComplete)

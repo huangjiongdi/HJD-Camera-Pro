@@ -57,8 +57,13 @@ final class ImageProcessingHelper {
     // MARK: - Color space
 
     func convert(_ image: CIImage, to colorSpace: CGColorSpace) -> CIImage {
-        image.applyingFilter("CIColorMatrix")
-            .settingColorSpace(colorSpace)
+        guard let cg = context.createCGImage(image,
+                                             from: image.extent,
+                                             format: .RGBA8,
+                                             colorSpace: colorSpace) else {
+            return image
+        }
+        return CIImage(cgImage: cg, options: [.colorSpace: colorSpace])
     }
 
     // MARK: - Render to CGImage

@@ -20,14 +20,17 @@ final class AIProcessingQueue: ObservableObject {
     private let queue = DispatchQueue(label: "com.hjd.camera.aiQueue", qos: .userInitiated)
     private var maxConcurrent: Int = 1
     private var activeCount: Int = 0
+    private var thermalToken: NSObjectProtocol?
 
     private init() {
-        NotificationCenter.default.addObserver(
-            self,
-            selector: #selector(thermalStateChanged),
-            name: ProcessInfo.thermalStateDidChangeNotification,
-            object: nil
-        )
+        // Block-based observer (this class is not an NSObject).
+        thermalToken = NotificationCenter.default.addObserver(
+            forName: ProcessInfo.thermalStateDidChangeNotification,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            self?.thermalStateChanged()
+        }
     }
 
     // MARK: - Enqueue
@@ -40,10 +43,10 @@ final class AIProcessingQueue: ObservableObject {
         }
     }
 
-    /// 取消指定任务。
+    /// 取消指定任务（接受 UUID 字符串）。
     func cancel(taskID: String) {
         queue.async {
-            self.pendingTasks.removeAll { $0.id == taskID }
+            self.pendingTasks.removeAll { $0.id.uuidString == taskID }
         }
     }
 
@@ -68,44 +71,52 @@ final class AIProcessingQueue: ObservableObject {
             self.isProcessing = true
         }
 
-        // 实际任务执行由各 Pipeline 提供的闭包完成
+        // 实际任务执行由各 Pipeline 提供的闭包完成；闭包无参数标签。
         DispatchQueue.global().async {
-            task.executionBlock? { [weak self] progress in
-                DispatchQueue.main.async {
-                    task.progress = progress
-                }
-            } completion: { [weak self] result in
-                guard let self = self else { return }
-                self.queue.async {
-                    self.activeCount -= 1
+            task.executionBlock?(
+                { progress in
                     DispatchQueue.main.async {
-                        self.currentTask = nil
-                        self.isProcessing = !self.pendingTasks.isEmpty
+                        var updated = task
+                        updated.progress = progress
+                        updated.state = .processing(progress: progress)
+                        self.currentTask = updated
                     }
-                    self.processNext()
+                },
+                { result in
+                    self.queue.async {
+                        self.activeCount -= 1
+                        DispatchQueue.main.async {
+                            var finished = task
+                            finished.state = result
+                                ? .completed
+                                : .failed(error: "AI 处理失败")
+                            finished.progress = result ? 1.0 : finished.progress
+                            self.currentTask = nil
+                            self.isProcessing = !self.pendingTasks.isEmpty
+                        }
+                        self.processNext()
+                    }
                 }
-            }
+            )
         }
     }
 
     // MARK: - Thermal / Memory
 
-    @objc private func thermalStateChanged() {
+    private func thermalStateChanged() {
         let state = ProcessInfo.processInfo.thermalState
-        DispatchQueue.main.async {
-            switch state {
-            case .nominal, .fair:
-                self.degradedMode = false
-                self.maxConcurrent = 1
-            case .serious:
-                self.degradedMode = true
-                self.maxConcurrent = 1
-            case .critical:
-                self.degradedMode = true
-                self.maxConcurrent = 0 // 暂停新任务
-            @unknown default:
-                break
-            }
+        switch state {
+        case .nominal, .fair:
+            degradedMode = false
+            maxConcurrent = 1
+        case .serious:
+            degradedMode = true
+            maxConcurrent = 1
+        case .critical:
+            degradedMode = true
+            maxConcurrent = 0 // 暂停新任务
+        @unknown default:
+            break
         }
     }
 
@@ -119,7 +130,7 @@ final class AIProcessingQueue: ObservableObject {
 // MARK: - AIProcessingTask 扩展（执行闭包）
 
 extension AIProcessingTask {
-    /// 任务执行闭包：传入进度回调与完成回调。
+    /// 任务执行闭包：传入进度回调与完成回调（无标签）。
     var executionBlock: ((@escaping (Double) -> Void, @escaping (Bool) -> Void) -> Void)? {
         get { objc_getAssociatedObject(self, &Keys.execBlock) as? ((@escaping (Double) -> Void, @escaping (Bool) -> Void) -> Void) }
         set { objc_setAssociatedObject(self, &Keys.execBlock, newValue, .OBJC_ASSOCIATION_RETAIN_NONATOMIC) }

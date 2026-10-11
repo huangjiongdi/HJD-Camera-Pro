@@ -167,7 +167,7 @@ final class CameraManager: NSObject, ObservableObject {
         if displayZoom > maxHW {
             return displayZoom >= 100 ? .ai : .digital
         }
-        let switches = DeviceCapabilityManager.shared.switchOverFactors.map { CGFloat($0.doubleValue) }
+        let switches = DeviceCapabilityManager.shared.switchOverFactors
         if displayZoom <= (switches.first ?? 2.0) { return .optical }
         return .hybrid
     }
@@ -197,7 +197,7 @@ final class CameraManager: NSObject, ObservableObject {
         do {
             try device.lockForConfiguration()
             let hw = hardwareZoomFactor(forDisplayZoom: clamped)
-            device.ramp(toVideoZoomFactor: hw, withRate: rate)
+            device.ramp(toVideoZoomFactor: hw, withRate: Float(rate))
             device.unlockForConfiguration()
             currentZoomFactor = clamped
             zoomSource = zoomSource(forDisplayZoom: clamped)
@@ -209,18 +209,26 @@ final class CameraManager: NSObject, ObservableObject {
     // MARK: - Capture
 
     func capturePhoto() {
-        let settings = AVCapturePhotoSettings()
-        settings.flashMode = AppState.shared.flashMode
-        if photoOutput.availablePhotoCodecTypes.contains(.hevc) {
-            settings.photoQualityPrioritization = .balanced
-        }
-        if AppState.shared.rawEnabled,
-           photoOutput.availableRawPhotoPixelFormatTypes.first != nil {
-            settings.rawFileType = .dng
-            // Embed a small JPEG preview alongside the DNG.
-            settings.previewPhotoFormat = [
+        // RAW capture must use the dedicated raw initializer; `rawFileType` is
+        // read-only on a normal photo settings object.
+        let wantsRaw = AppState.shared.rawEnabled
+            && photoOutput.availableRawPhotoPixelFormatTypes.first != nil
+
+        let settings: AVCapturePhotoSettings
+        if wantsRaw, let rawFormat = photoOutput.availableRawPhotoPixelFormatTypes.first {
+            let raw = AVCapturePhotoSettings(rawPixelFormatType: rawFormat)
+            raw.flashMode = AppState.shared.flashMode
+            raw.previewPhotoFormat = [
                 kCVPixelBufferPixelFormatTypeKey as String: kCVPixelFormatType_32BGRA
             ]
+            settings = raw
+        } else {
+            let normal = AVCapturePhotoSettings()
+            normal.flashMode = AppState.shared.flashMode
+            if photoOutput.availablePhotoCodecTypes.contains(.hevc) {
+                normal.photoQualityPrioritization = .balanced
+            }
+            settings = normal
         }
         photoOutput.capturePhoto(with: settings, delegate: PhotoCapturePipeline.shared)
     }

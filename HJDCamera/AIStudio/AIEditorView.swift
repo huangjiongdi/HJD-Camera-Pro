@@ -301,7 +301,8 @@ struct AIEditorView: View {
 
     private func startProcessing() {
         isProcessing = true
-        aiProcessingQueue.startTask(type: taskType, scale: outputScale, quality: qualityLevel)
+        // Queue drives pipeline-based captures; the editor performs its own
+        // asynchronous processing below and reports progress locally.
 
         DispatchQueue.main.asyncAfter(deadline: .now() + 3.0) {
             self.isProcessing = false

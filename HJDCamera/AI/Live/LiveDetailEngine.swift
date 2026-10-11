@@ -27,10 +27,9 @@ final class LiveDetailEngine {
         let intensity: Double
         switch level {
         case .off: intensity = 0
-        case .low: intensity = 0.2
+        case .smooth: intensity = 0.2
         case .balanced: intensity = 0.4
-        case .high: intensity = 0.6
-        case .ultra: intensity = 0.8
+        case .highDetail: intensity = 0.7
         }
 
         guard intensity > 0 else {

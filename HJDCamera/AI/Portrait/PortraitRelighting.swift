@@ -33,11 +33,11 @@ final class PortraitRelighting {
 
         // 局部色调映射
         let toneMapped = adjusted.applyingFilter("CIToneCurve", parameters: [
-            kCIInputPoint0: CIVector(x: 0, y: 0.02),
-            kCIInputPoint1: CIVector(x: 0.3, y: 0.35),
-            kCIInputPoint2: CIVector(x: 0.6, y: 0.6),
-            kCIInputPoint3: CIVector(x: 0.85, y: 0.82),
-            kCIInputPoint4: CIVector(x: 1, y: 0.95)
+            "inputPoint0": CIVector(x: 0, y: 0.02),
+            "inputPoint1": CIVector(x: 0.3, y: 0.35),
+            "inputPoint2": CIVector(x: 0.6, y: 0.6),
+            "inputPoint3": CIVector(x: 0.85, y: 0.82),
+            "inputPoint4": CIVector(x: 1, y: 0.95)
         ])
 
         return RelightResult(image: toneMapped, exposureAdjusted: adjustment)

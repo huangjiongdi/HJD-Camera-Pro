@@ -15,9 +15,13 @@ struct AIStudioView: View {
 
     private let champagneGold = Color(red: 0.85, green: 0.75, blue: 0.55)
 
+    private var progress: Double {
+        aiProcessingQueue.currentTask?.progress ?? 0
+    }
+
     private let sections: [AISection] = [
         AISection(title: "画质增强", icon: "wand.and.stars", tasks: [.superResolution, .denoise, .deblur]),
-        AISection(title: "夜景HDR", icon: "moon.stars.fill", tasks: [.nightRestore, .hdr]),
+        AISection(title: "夜景修复", icon: "moon.stars.fill", tasks: [.nightRestore, .denoise]),
         AISection(title: "超级月亮", icon: "moon.fill", tasks: [.lunarEnhance]),
         AISection(title: "微距与建筑", icon: "building.2", tasks: [.macroEnhance, .architectureEnhance, .textEnhance]),
         AISection(title: "人像", icon: "person.crop.circle", tasks: [.portraitOptimize]),
@@ -95,9 +99,9 @@ struct AIStudioView: View {
 
     private var processingBanner: some View {
         HStack {
-            ProgressView(value: aiProcessingQueue.currentProgress)
+            ProgressView(value: progress)
                 .tint(champagneGold)
-            Text("处理中 \(Int(aiProcessingQueue.currentProgress * 100))%")
+            Text("处理中 \(Int(progress * 100))%")
                 .font(.system(size: 12, weight: .medium))
                 .foregroundColor(champagneGold)
         }

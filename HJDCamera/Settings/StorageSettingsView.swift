@@ -11,6 +11,7 @@ import SwiftUI
 struct StorageSettingsView: View {
     @EnvironmentObject var settingsStore: AppSettingsStore
     @EnvironmentObject var storageManager: StorageManager
+    @State private var tempRetentionDays = 7
 
     private let champagneGold = Color(red: 0.85, green: 0.75, blue: 0.55)
 
@@ -33,11 +34,13 @@ struct StorageSettingsView: View {
             }
 
             Section("自动管理") {
-                Toggle("自动清理临时文件", isOn: $settingsStore.autoCleanupTemp)
-                Stepper("临时文件保留天数: \(settingsStore.tempRetentionDays)",
-                        value: $settingsStore.tempRetentionDays, in: 1...30)
-                Toggle("AI处理后自动保存", isOn: $settingsStore.autoSaveProcessed)
-                Toggle("保留原始文件", isOn: $settingsStore.keepOriginalAfterProcess)
+                Toggle("自动清理临时文件", isOn: $settingsStore.tempFileCleanup)
+                Stepper("临时文件保留天数: \(tempRetentionDays)",
+                        value: $tempRetentionDays, in: 1...30)
+                Toggle("AI处理后自动保存", isOn: $settingsStore.saveAIProcessed)
+                Toggle("保留原始文件", isOn: $settingsStore.keepOriginal)
+                Toggle("退出时清理缓存", isOn: $settingsStore.cacheCleanupOnExit)
+                Toggle("清理失败任务", isOn: $settingsStore.failedTaskCleanup)
             }
 
             Section {

@@ -2,8 +2,8 @@
 //  PerformanceSettingsView.swift
 //  HJD Camera Pro
 //
-//  Performance and device settings: thermal throttling behavior, memory
-//  pressure, resolution degradation, background processing, hardware accel.
+//  Performance and device settings: thermal / low-power / memory degrade,
+//  background policy, AI task concurrency, model preload, launch priority.
 //
 
 import SwiftUI
@@ -31,21 +31,28 @@ struct PerformanceSettingsView: View {
                 }
             }
 
-            Section("性能策略") {
-                Picker("过热降级", selection: $settingsStore.thermalThrottleMode) {
-                    Text("自动").tag(0)
-                    Text("降低分辨率").tag(1)
-                    Text("关闭AI预览").tag(2)
-                    Text("暂停处理").tag(3)
-                }
-                Toggle("后台处理", isOn: $settingsStore.backgroundProcessing)
-                Toggle("Metal加速", isOn: $settingsStore.metalAcceleration)
-                Toggle("禁用后台刷新", isOn: $settingsStore.disableBackgroundRefresh)
+            Section("自适应降级") {
+                Toggle("过热自动降级", isOn: $settingsStore.thermalDegrade)
+                Toggle("低电量降级", isOn: $settingsStore.lowPowerDegrade)
+                Toggle("内存压力保护", isOn: $settingsStore.memoryPressureProtection)
             }
 
-            Section("预览性能") {
-                Toggle("高帧率预览", isOn: $settingsStore.highFpsPreview)
-                Toggle("预览降分辨率省电", isOn: $settingsStore.previewResolutionSaver)
+            Section("性能策略") {
+                Picker("后台处理策略", selection: $settingsStore.backgroundPolicy) {
+                    ForEach(BackgroundPolicy.allCases, id: \.self) { policy in
+                        Text(policy.rawValue).tag(policy)
+                    }
+                }
+                Stepper(value: $settingsStore.aiTaskConcurrency, in: 1...4) {
+                    Text("AI 任务并发数：\(settingsStore.aiTaskConcurrency)")
+                }
+                Toggle("预加载模型", isOn: $settingsStore.preloadModels)
+                Toggle("启动速度优先", isOn: $settingsStore.launchSpeedPriority)
+            }
+
+            Section("提醒与报告") {
+                Toggle("电量警告", isOn: $settingsStore.batteryWarning)
+                Toggle("兼容性报告", isOn: $settingsStore.compatibilityReport)
             }
         }
         .navigationTitle("性能与设备")
@@ -66,4 +73,6 @@ struct PerformanceSettingsView: View {
 
 #Preview {
     NavigationStack { PerformanceSettingsView() }
+        .environmentObject(AppState.shared)
+        .environmentObject(AppSettingsStore.shared)
 }

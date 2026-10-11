@@ -23,7 +23,7 @@ final class ArchitectureDetailSR {
     /// 建筑纹理超分。
     func superResolve(image: CIImage, scale: Double = 2.0) -> SRResult {
         // 先提取边缘图
-        let edgeMap = ArchitectureEdgeNet.shared.extractEdges(image)
+        let edgeMap = ArchitectureEdgeNet.shared.extractEdges(image: image)
 
         // 优先使用 ArchitectureSR 专用模型
         if AIModelRegistry.shared.isModelAvailable("architecture_sr") {

@@ -34,7 +34,7 @@ final class FocusExposureController: ObservableObject {
     private var motionUnlockToken: NSObjectProtocol?
     private let device = CameraManager.shared.currentDevice
 
-    private override init() {}
+    private init() {}
 
     // MARK: - Tap focus / expose
 

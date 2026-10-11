@@ -31,7 +31,7 @@ final class NonlinearZoomController: ObservableObject {
     private let snapTolerance: CGFloat = 0.35
     private let nodes: [CGFloat] = [1.0, 2.0, 5.0, 10.0]
 
-    private override init() {}
+    private init() {}
 
     // MARK: - Nonlinear curve
 

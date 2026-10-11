@@ -198,7 +198,7 @@ struct BatchProcessView: View {
                 .foregroundColor(.white.opacity(0.8))
 
             Button {
-                aiProcessingQueue.cancelBatch()
+                aiProcessingQueue.cancelAll()
                 isProcessing = false
             } label: {
                 Text("取消批量处理")
