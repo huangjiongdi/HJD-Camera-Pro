@@ -117,7 +117,9 @@ final class VideoCapturePipeline: NSObject, AVCaptureFileOutputRecordingDelegate
                     didStartRecordingTo fileURL: URL,
                     from connections: [AVCaptureConnection]) {
         beginRecording(to: fileURL)
-        audioActive = connections.contains { $0.isAudioMirroring == false }
+        audioActive = connections.contains { conn in
+            conn.inputPorts.contains { port in port.portType == .audio }
+        }
     }
 
     func fileOutput(_ output: AVCaptureFileOutput,

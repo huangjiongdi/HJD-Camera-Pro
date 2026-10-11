@@ -84,7 +84,7 @@ final class LunarPipeline: ObservableObject {
             // Stage 7: 超分
             self.currentStage = "月面超分"
             self.progress = 0.8
-            let srScale: Double = qualityMode == .ultra ? 3.0 : 2.0
+            let srScale: Double = qualityMode == .experimental ? 3.0 : 2.0
             let sr = LunarSR.shared.superResolve(image: denoised.image, scale: srScale)
 
             // Stage 8: 细节恢复（受约束）
@@ -108,7 +108,7 @@ final class LunarPipeline: ObservableObject {
             let result = LunarProcessingResult(
                 image: finalImage,
                 confidence: fidelity.pass ? 0.9 : 0.5,
-                qualityScore: qualityMode == .ultra ? 0.95 : 0.8,
+                qualityScore: qualityMode == .experimental ? 0.95 : 0.8,
                 frameCount: fusion.frameCount,
                 modelUsed: sr.modelUsed
             )

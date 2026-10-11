@@ -10,8 +10,8 @@ import SwiftUI
 import Photos
 
 struct ExportResultView: View {
-    let image: UIImage?
-    let assessment: QualityAssessment?
+    let image: UIImage? = nil
+    let assessment: QualityAssessment? = nil
     @Environment(\.dismiss) private var dismiss
     @State private var saved = false
     @State private var showShareSheet = false
