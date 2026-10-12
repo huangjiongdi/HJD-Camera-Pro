@@ -262,11 +262,11 @@ enum LunarQualityMode: String {
 }
 
 struct LunarProcessingResult {
-    var confidence: ZoomConfidence
-    var fusedFrames: Int
-    var rejectedFrames: Int
-    var aiGeneratedRatio: Double
-    var detailMap: CIImage?
+    var image: CIImage
+    var confidence: Double
+    var qualityScore: Double
+    var frameCount: Int
+    var modelUsed: String
 }
 
 // MARK: - Macro
