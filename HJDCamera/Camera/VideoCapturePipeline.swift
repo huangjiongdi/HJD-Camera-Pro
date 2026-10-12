@@ -118,7 +118,7 @@ final class VideoCapturePipeline: NSObject, AVCaptureFileOutputRecordingDelegate
                     from connections: [AVCaptureConnection]) {
         beginRecording(to: fileURL)
         audioActive = connections.contains { conn in
-            conn.inputPorts.contains { port in port.portType == .audio }
+            conn.inputPorts.contains { port in port.mediaType == .audio }
         }
     }
 

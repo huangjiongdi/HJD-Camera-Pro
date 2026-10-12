@@ -10,8 +10,8 @@ import SwiftUI
 import Photos
 
 struct ExportResultView: View {
-    let image: UIImage? = nil
-    let assessment: QualityAssessment? = nil
+    var image: UIImage? = nil
+    var assessment: QualityAssessment? = nil
     @Environment(\.dismiss) private var dismiss
     @State private var saved = false
     @State private var showShareSheet = false
@@ -191,6 +191,6 @@ struct ExportResultView: View {
 
 #Preview {
     NavigationStack {
-        ExportResultView(image: UIImage(), assessment: nil)
+        ExportResultView()
     }
 }

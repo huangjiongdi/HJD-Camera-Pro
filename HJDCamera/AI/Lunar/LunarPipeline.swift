@@ -29,7 +29,7 @@ final class LunarPipeline: ObservableObject {
         state = .processing(progress: 0)
         progress = 0
 
-        processingQueue.async { [weak self] in
+        processingQueue.async(execute: DispatchWorkItem { [weak self] in
             guard let self = self, !frames.isEmpty else {
                 DispatchQueue.main.async {
                     self?.state = .failed(error: "月面处理失败")
@@ -116,6 +116,6 @@ final class LunarPipeline: ObservableObject {
             DispatchQueue.main.async {
                 completion(result)
             }
-        }
+        })
     }
 }
