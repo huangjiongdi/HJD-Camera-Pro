@@ -22,6 +22,8 @@ enum CaptureMode: String, CaseIterable, Identifiable {
     case timeLapse = "延时摄影"
     case burst = "连拍"
     case multiExposure = "多重曝光"
+    case starTrail = "星轨"
+    case lightTrail = "光轨"
     case macro = "长焦微距"
     case panorama = "全景"
 
@@ -31,12 +33,17 @@ enum CaptureMode: String, CaseIterable, Identifiable {
         self == .video || self == .slowMotion || self == .timeLapse
     }
 
+    /// 多帧序列模式：星轨/光轨（取每像素最亮）/ 多重曝光（叠加）。
+    var isTrailMode: Bool {
+        self == .starTrail || self == .lightTrail || self == .multiExposure
+    }
+
     var coreModes: [CaptureMode] {
         [.photo, .portrait, .video, .slowMotion, .night, .superMoon]
     }
 
     var moreModes: [CaptureMode] {
-        [.pro, .macro, .timeLapse, .burst, .multiExposure, .panorama]
+        [.pro, .macro, .timeLapse, .burst, .multiExposure, .starTrail, .lightTrail, .panorama]
     }
 }
 

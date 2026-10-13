@@ -42,7 +42,175 @@ final class PhotoCapturePipeline: NSObject, AVCapturePhotoCaptureDelegate, Obser
     private var inFlight = 0
     private var multiExposureTarget = 0
 
+    // MARK: - 星轨/光轨/多曝光序列
+    private let trailLock = NSLock()
+    private var trailState: TrailState?
+
+    private final class TrailState {
+        var target: Int
+        var count: Int = 0
+        var accumulator: CIImage?
+        let lighten: Bool
+        let tap: Int
+        init(target: Int, lighten: Bool, tap: Int) {
+            self.target = target
+            self.lighten = lighten
+            self.tap = tap
+        }
+    }
+
     private override init() {}
+
+    // MARK: - 星轨 / 光轨 / 多曝光
+
+    var isTrailActive: Bool {
+        trailLock.lock(); defer { trailLock.unlock() }
+        return trailState != nil
+    }
+
+    /// 开始多帧序列：lighten=true 取每像素最亮（星轨/光轨），false 叠加（多曝光）。
+    func beginTrail(frameCount: Int, lighten: Bool, tap: Int) {
+        trailLock.lock()
+        trailState = TrailState(target: max(2, frameCount), lighten: lighten, tap: tap)
+        trailLock.unlock()
+        DispatchQueue.main.async {
+            AppState.shared.isProcessing = true
+            AppState.shared.processingProgress = 0.03
+        }
+        ShutterTrace.mark(tap, "多帧序列开始",
+                          extra: "帧数=\(frameCount) 混合=\(lighten ? "lighten" : "add")")
+        captureTrailFrame()
+    }
+
+    private func captureTrailFrame() {
+        let output = CameraManager.shared.photoOutput
+        let tap = ShutterTrace.lastTap
+        guard output.connection(with: .video) != nil else {
+            ShutterTrace.mark(tap, "序列拍摄中止：无连接")
+            abortTrail(message: "相机尚未就绪")
+            return
+        }
+        let settings = AVCapturePhotoSettings()
+        settings.flashMode = .off
+        // 序列帧优先速度，保证连排间隔短、星点/光斑不断。
+        if AVCapturePhotoOutput.QualityPrioritization.speed.rawValue
+            <= output.maxPhotoQualityPrioritization.rawValue {
+            settings.photoQualityPrioritization = .speed
+        } else {
+            settings.photoQualityPrioritization = .balanced
+        }
+        ShutterTrace.mark(tap, "序列帧 capturePhoto 提交")
+        output.capturePhoto(with: settings, delegate: self)
+    }
+
+    private func handleTrailFrame(data: Data, tap: Int) {
+        trailLock.lock()
+        guard let state = trailState else {
+            trailLock.unlock()
+            return
+        }
+        // 解码并方向转正（不做 LUT/AI，保持夜空暗场）。
+        let frame: CIImage? = {
+            guard let src = CGImageSourceCreateWithData(data as CFData, nil) else { return nil }
+            let options = [
+                kCGImageSourceCreateThumbnailFromImageAlways: true,
+                kCGImageSourceCreateThumbnailWithTransform: true,
+                kCGImageSourceThumbnailMaxPixelSize: 4032
+            ] as [CFString: Any] as CFDictionary
+            guard let cg = CGImageSourceCreateThumbnailAtIndex(src, 0, options) else { return nil }
+            return CIImage(cgImage: cg)
+        }()
+
+        if let f = frame {
+            if let acc = state.accumulator {
+                state.accumulator = state.lighten
+                    ? f.applyingFilter("CILightenBlendMode", parameters: [kCIInputBackgroundImageKey: acc])
+                    : f.applyingFilter("CIAdditionCompositing", parameters: [kCIInputBackgroundImageKey: acc])
+            } else {
+                state.accumulator = f
+            }
+            state.count += 1
+        }
+
+        let done = state.count >= state.target
+        let progress = Double(state.count) / Double(state.target)
+        if done { trailState = nil }
+        trailLock.unlock()
+
+        DispatchQueue.main.async {
+            AppState.shared.processingProgress = 0.1 + 0.8 * progress
+        }
+
+        if done {
+            ShutterTrace.mark(tap, "多帧序列融合中", extra: "帧数=\(state.count)")
+            finalizeTrail(state: state)
+        } else {
+            // 立即排下一张。
+            captureTrailFrame()
+        }
+    }
+
+    private func abortTrail(message: String) {
+        trailLock.lock()
+        trailState = nil
+        trailLock.unlock()
+        DispatchQueue.main.async {
+            AppState.shared.isProcessing = false
+            AppState.shared.processingProgress = 0
+            NotificationCenter.default.post(name: .hjdStorageWarning, object: message)
+        }
+    }
+
+    private func finalizeTrail(state: TrailState) {
+        DispatchQueue.global(qos: .userInitiated).async {
+            autoreleasepool {
+                guard let fused = state.accumulator,
+                      let cg = self.ciContext.createCGImage(fused, from: fused.extent) else {
+                    ShutterTrace.mark(state.tap, "多帧序列融合失败：无图像")
+                    DispatchQueue.main.async {
+                        AppState.shared.isProcessing = false
+                        AppState.shared.processingProgress = 0
+                        NotificationCenter.default.post(name: .hjdStorageWarning,
+                                                        object: "多帧合成失败，请重试")
+                    }
+                    return
+                }
+                let image = UIImage(cgImage: cg)
+                guard let jpeg = image.jpegData(compressionQuality: 0.95) else {
+                    DispatchQueue.main.async {
+                        AppState.shared.isProcessing = false
+                        NotificationCenter.default.post(name: .hjdStorageWarning,
+                                                        object: "多帧合成失败，请重试")
+                    }
+                    return
+                }
+                let outURL = self.fileManager.temporaryDirectory
+                    .appendingPathComponent("trail-\(UUID().uuidString).jpg")
+                try? jpeg.write(to: outURL, options: .atomic)
+
+                DispatchQueue.main.async {
+                    AppState.shared.lastCapturedImageURL = outURL
+                    AppState.shared.processingProgress = 1.0
+                    AppState.shared.isProcessing = false
+                }
+
+                Task {
+                    let result = await PhotoLibraryExporter.shared.exportPhoto(data: jpeg)
+                    DispatchQueue.main.async {
+                        switch result {
+                        case .success:
+                            ShutterTrace.mark(state.tap, "多帧序列完成，已保存相册")
+                            NotificationCenter.default.post(name: .hjdCaptureCompleted, object: outURL)
+                            HapticEngine.shared.trigger(.exportComplete)
+                        case .failure(let e):
+                            ShutterTrace.mark(state.tap, "多帧序列保存失败", extra: "\(e)")
+                            NotificationCenter.default.post(name: .hjdStorageWarning, object: e.description)
+                        }
+                    }
+                }
+            }
+        }
+    }
 
     // MARK: - Public capture triggers
 
@@ -155,7 +323,14 @@ final class PhotoCapturePipeline: NSObject, AVCapturePhotoCaptureDelegate, Obser
         let originalURL = writeOriginalToTemp(data: originalData, isRAW: isRAW)
         ShutterTrace.mark(tap, "原始临时文件已写", extra: originalURL.lastPathComponent)
 
-        // 2. 多曝光合成模式。
+        // 2. 星轨/光轨/多曝光序列：单帧不入相册，直接进入融合链路。
+        if isTrailActive {
+            ShutterTrace.mark(tap, "序列帧到达")
+            handleTrailFrame(data: originalData, tap: tap)
+            return
+        }
+
+        // 2b. 旧多曝光骨架（保留兼容，实际走 beginTrail）。
         if multiExposureTarget > 0 {
             ShutterTrace.mark(tap, "进入多曝光合成")
             accumulateMultiExposureFrame(data: originalData)

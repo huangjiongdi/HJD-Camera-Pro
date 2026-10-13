@@ -393,6 +393,27 @@ final class CameraManager: NSObject, ObservableObject {
                 return
             }
 
+            // 星轨 / 光轨 / 多重曝光：多帧序列，由 PhotoCapturePipeline 连排并融合。
+            let currentMode = AppState.shared.currentMode
+            if currentMode.isTrailMode {
+                let pipeline = PhotoCapturePipeline.shared
+                if pipeline.isTrailActive {
+                    ShutterTrace.mark(tap, "多帧序列进行中，忽略重复快门")
+                    return
+                }
+                switch currentMode {
+                case .starTrail:
+                    pipeline.beginTrail(frameCount: 20, lighten: true, tap: tap)
+                case .lightTrail:
+                    pipeline.beginTrail(frameCount: 15, lighten: true, tap: tap)
+                case .multiExposure:
+                    pipeline.beginTrail(frameCount: 5, lighten: false, tap: tap)
+                default:
+                    break
+                }
+                return
+            }
+
             // 闪光灯必须是当前会话配置真实支持的模式。否则 capturePhoto
             // 会立即抛 NSInvalidArgumentException（虚拟三摄/前置/某些视频配置
             // 下 supportedFlashModes 可能为空或只有 .off），真机表现为一点快门

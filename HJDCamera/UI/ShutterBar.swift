@@ -125,6 +125,10 @@ struct ShutterBar: View {
                 cameraManager.startRecording()
                 appState.isRecording = true
             }
+        } else if appState.currentMode.isTrailMode
+                    && PhotoCapturePipeline.shared.isTrailActive {
+            // 多帧序列进行中，快门锁定，避免重复触发。
+            ShutterTrace.mark(tap, "序列拍摄中，忽略快门")
         } else {
             cameraManager.capturePhoto(tap: tap)
         }
@@ -151,6 +155,30 @@ struct ShutterBar: View {
                 .padding(.vertical, 4)
                 .background(Capsule().fill(Color.black.opacity(0.6)))
                 .offset(y: -40)
+        }
+        if appState.currentMode.isTrailMode {
+            if PhotoCapturePipeline.shared.isTrailActive {
+                HStack(spacing: 8) {
+                    ProgressView().tint(champagneGold).scaleEffect(0.8)
+                    Text(String(format: "保持稳定… %.0f%%", appState.processingProgress * 100))
+                        .font(.system(size: 11, weight: .semibold))
+                        .foregroundColor(.white)
+                }
+                .padding(.horizontal, 12)
+                .padding(.vertical, 5)
+                .background(Capsule().fill(Color.black.opacity(0.65)))
+                .offset(y: -40)
+            } else {
+                Text(appState.currentMode == .multiExposure
+                     ? "保持稳定：自动连拍5张叠加"
+                     : "固定手机：自动连排长曝光合成")
+                    .font(.system(size: 11, weight: .medium))
+                    .foregroundColor(.white.opacity(0.9))
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 5)
+                    .background(Capsule().fill(Color.black.opacity(0.6)))
+                    .offset(y: -40)
+            }
         }
         if appState.currentMode == .macro {
             HStack(spacing: 8) {
