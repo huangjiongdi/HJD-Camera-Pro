@@ -375,12 +375,11 @@ final class CameraManager: NSObject, ObservableObject {
             let output = self.photoOutput
             let deviceDesc = self.currentDevice?.deviceType.rawValue ?? "nil"
             let supportedFlash = Set(output.supportedFlashModes)
-            let previewFormats = output.availablePreviewPhotoPixelFormatTypes
             let rawFormats = output.availableRawPhotoPixelFormatTypes
             let photoFormats = output.availablePhotoPixelFormatTypes
             ShutterTrace.mark(
                 tap, "进入 capturePhoto",
-                extra: "设备=\(deviceDesc) 会话运行=\(self.session.isRunning) 已配置=\(self.isConfigured) photoOutput已挂载=\(self.session.outputs.contains(output)) 连接=\(output.connection(with: .video) != nil) 支持闪光=\(supportedFlash.map { $0.rawValue }) 照片格式数=\(photoFormats.count) RAW格式数=\(rawFormats.count) 预览格式=\(previewFormats.map { $0 }) maxQuality=\(output.maxPhotoQualityPrioritization.rawValue)"
+                extra: "设备=\(deviceDesc) 会话运行=\(self.session.isRunning) 已配置=\(self.isConfigured) photoOutput已挂载=\(self.session.outputs.contains(output)) 连接=\(output.connection(with: .video) != nil) 支持闪光=\(supportedFlash.map { $0.rawValue }) 照片格式数=\(photoFormats.count) RAW格式数=\(rawFormats.count) maxQuality=\(output.maxPhotoQualityPrioritization.rawValue)"
             )
 
             guard self.session.isRunning,
@@ -412,17 +411,8 @@ final class CameraManager: NSObject, ObservableObject {
                let rawFormat = rawFormats.first {
                 let raw = AVCapturePhotoSettings(rawPixelFormatType: rawFormat)
                 raw.flashMode = flash
-                // 预览格式也必须是系统真实支持的，否则同样会抛异常。
-                // 该数组在不同 SDK 下可能桥接为 [NSNumber] 或 [OSType]，用条件
-                // 转换兼容两种情况。
-                let supportsBGRA = previewFormats.contains {
-                    ($0 as? OSType) == kCVPixelFormatType_32BGRA
-                }
-                if supportsBGRA {
-                    raw.previewPhotoFormat = [
-                        kCVPixelBufferPixelFormatTypeKey as String: kCVPixelFormatType_32BGRA
-                    ]
-                }
+                // 不设置 previewPhotoFormat——我们成片读取的是完整 fileDataRepresentation，
+                // 不需要内嵌预览图；该字典在不同设备上的像素格式约束可能触发异常。
                 settings = raw
             } else {
                 let normal = AVCapturePhotoSettings()
