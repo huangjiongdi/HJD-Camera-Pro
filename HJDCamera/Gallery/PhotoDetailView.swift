@@ -151,10 +151,12 @@ struct PhotoDetailPagerView: View {
             starRow
             HStack(spacing: 0) {
                 toolButton("info.circle", "信息") { showEXIF = true }
-                toolButton("wand.and.stars", "AI 超算", highlight: true) { showAIEditor = true }
-                toolButton("circle.hexagongrid", "大光圈") { showAperture = true }
-                toolButton("camera.viewfinder", "复古") { showRetro = true }
-                toolButton("square.on.square", "对比") { showCompare = true }
+                if asset.mediaType == .image {
+                    toolButton("wand.and.stars", "AI 超算", highlight: true) { showAIEditor = true }
+                    toolButton("circle.hexagongrid", "大光圈") { showAperture = true }
+                    toolButton("camera.viewfinder", "复古") { showRetro = true }
+                    toolButton("square.on.square", "对比") { showCompare = true }
+                }
                 toolButton("square.and.arrow.up", "分享") { showShare = true }
             }
             .padding(.horizontal, 6)
@@ -361,6 +363,7 @@ struct EXIFSheet: View {
     @EnvironmentObject var meta: GalleryMetadataStore
     @Environment(\.dismiss) private var dismiss
     @State private var info: EXIFInfo?
+    @State private var infoLoaded = false
 
     private let champagneGold = Color(red: 0.85, green: 0.75, blue: 0.55)
 
@@ -392,6 +395,16 @@ struct EXIFSheet: View {
                                     row("位置", "无位置信息")
                                 }
                             }
+                        } else if infoLoaded {
+                            VStack(spacing: 10) {
+                                Image(systemName: "info.circle")
+                                    .font(.system(size: 30))
+                                    .foregroundColor(.white.opacity(0.3))
+                                Text(asset.mediaType == .video ? "视频暂无 EXIF 信息" : "读取不到 EXIF 信息")
+                                    .font(.system(size: 13))
+                                    .foregroundColor(.white.opacity(0.5))
+                                    .padding(.top, 40)
+                            }
                         } else {
                             ProgressView().tint(champagneGold).padding(.top, 60)
                         }
@@ -408,7 +421,10 @@ struct EXIFSheet: View {
                 }
             }
             .onAppear {
-                EXIFInfo.load(asset: asset) { info = $0 }
+                EXIFInfo.load(asset: asset) { loaded in
+                    info = loaded
+                    infoLoaded = true
+                }
             }
         }
     }

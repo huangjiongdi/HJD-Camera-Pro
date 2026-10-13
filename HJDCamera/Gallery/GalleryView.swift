@@ -125,6 +125,10 @@ struct GalleryView: View {
             .onAppear {
                 checkPermission()
             }
+            .onChange(of: showDetail) { _, showing in
+                // 详情页里保存了大光圈/复古/AI 成片，返回后刷新网格。
+                if !showing && authorized { fetchAssets() }
+            }
             .fullScreenCover(isPresented: $showDetail) {
                 if let idx = selectedIndex {
                     PhotoDetailPagerView(assets: assets, initialIndex: idx)
