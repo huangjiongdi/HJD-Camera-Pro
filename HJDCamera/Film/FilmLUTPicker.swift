@@ -85,14 +85,8 @@ struct FilmLUTPicker: View {
             lutManager.selectLUT(lut.name)
         } label: {
             VStack(spacing: 6) {
-                // Preview swatch
-                RoundedRectangle(cornerRadius: 8)
-                    .fill(LinearGradient(
-                        colors: swatchColors(for: lut.name),
-                        startPoint: .topLeading,
-                        endPoint: .bottomTrailing
-                    ))
-                    .frame(height: 80)
+                // 真实 LUT 缩略图（全色相参考图上逐滤镜渲染，非假色块）。
+                FilterThumbnailView(name: lut.name, size: 96)
                     .overlay(
                         RoundedRectangle(cornerRadius: 8)
                             .stroke(isActive ? champagneGold : Color.clear, lineWidth: 2)
@@ -105,17 +99,6 @@ struct FilmLUTPicker: View {
             }
         }
         .buttonStyle(.plain)
-    }
-
-    private func swatchColors(for name: String) -> [Color] {
-        // Generate a deterministic gradient based on name hash
-        let hash = abs(name.hashValue)
-        let hue1 = Double(hash % 360) / 360.0
-        let hue2 = Double((hash / 360) % 360) / 360.0
-        return [
-            Color(hue: hue1, saturation: 0.6, brightness: 0.8),
-            Color(hue: hue2, saturation: 0.5, brightness: 0.6)
-        ]
     }
 }
 

@@ -25,6 +25,7 @@ struct TopStatusBar: View {
                     flashButton
                     timerButton
                     gridButton
+                    filterButton
                 }
                 Spacer()
                 HStack(spacing: 16) {
@@ -126,6 +127,38 @@ struct TopStatusBar: View {
                 .background(Circle().fill(Color.black.opacity(0.35)))
         }
         .buttonStyle(.plain)
+    }
+
+    // MARK: - 滤镜（极影式横滑条）
+
+    private var filterButton: some View {
+        let active = appState.showFilterStrip || LUTManager.shared.activeLUTName != "None"
+        return Button {
+            hapticToggle()
+            withAnimation(.easeOut(duration: 0.2)) {
+                appState.showFilterStrip.toggle()
+            }
+        } label: {
+            ZStack(alignment: .bottomTrailing) {
+                Image(systemName: "camera.filters")
+                    .font(.system(size: 16, weight: .medium))
+                    .foregroundColor(active ? .black : .white.opacity(0.85))
+                    .frame(width: 38, height: 38)
+                    .background(Circle().fill(active ? champagneGold : Color.black.opacity(0.35)))
+                if LUTManager.shared.activeLUTName != "None" {
+                    Circle()
+                        .fill(champagneGold)
+                        .frame(width: 8, height: 8)
+                        .overlay(Circle().stroke(Color.black.opacity(0.4), lineWidth: 1))
+                }
+            }
+        }
+        .buttonStyle(.plain)
+    }
+
+    private func hapticToggle() {
+        // 触感引擎在环境里没有注入到顶栏，直接走单例。
+        HapticEngine.shared.selectionChanged()
     }
 
     // MARK: - Center

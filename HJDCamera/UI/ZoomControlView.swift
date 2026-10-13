@@ -2,15 +2,14 @@
 //  ZoomControlView.swift
 //  HJD Camera Pro
 //
-//  第四轮精细变焦：
-//    · 顶部固定：0.5× / 1× / 5× / 10× + 倒三角（没有 2×）。
-//    · 点倒三角展开更多倍率：20× / 50× / 100× / 200× / 300× / 400× / 500×
-//      （无 25，含 20、300），展开后把原倍率行往上顶。
-//    · 更多倍率行下方出现一条“直直的”变焦条：最左 0.5、最右 500，
-//      线性、每格步进 1×，倍率显示取整数、保留 0.5 起点。
-//    · 无论面板是否展开，长按 0.35s 也可单独唤出这条 0.5×–500× 全范围变焦条。
-//    · 所有倍率按钮都走非线性连续丝滑变焦（flyZoom，CADisplayLink 逐帧），
-//      任意倍率切换（含 500×↔0.5×）全程超级丝滑；手指拖滑条则逐帧跟手。
+//  极影式变焦（r10 对齐）：
+//    · 主倍率行 0.5× / 1× / 2× / 5×（16 Pro Max 四颗镜头），点击直接
+//      非线性飞变焦；最后一个“轮盘”按钮一键展开半轮盘（长按主行也可）。
+//    · 半轮盘展开：上方一排高倍快捷档 10/20/50/100/200/300/400/500，
+//      下方 0.5×–500× 半圆弧轮盘，手指沿弧线滑动，角度 → 对数变焦，
+//      连续跟手、跨刻度震动、过硬件档位加强震动、松手吸附最近档位。
+//    · 照片 / 视频 / 实况 / 录像中都可用，所有倍率切换走 flyZoom
+//      （CADisplayLink 逐帧），跨硬件镜头切换点不跳变。
 //
 
 import SwiftUI
@@ -21,105 +20,103 @@ struct ZoomControlView: View {
     @EnvironmentObject private var cameraManager: CameraManager
     @EnvironmentObject private var hapticEngine: HapticEngine
 
-    @State private var showFineSlider = false
+    @State private var showWheel = false
 
     /// 顶部固定倍率：16 Pro Max 四颗镜头（0.5 超广角 / 1 主摄 / 2 48mm / 5 长焦）。
     private let mainStops: [CGFloat] = [0.5, 1, 2, 5]
-    /// 倒三角展开的更多倍率（无 25，含 20、300）。
-    private let moreStops: [CGFloat] = [20, 50, 100, 200, 300, 400, 500]
+    /// 半轮盘上方的高倍快捷档。
+    private let highStops: [CGFloat] = [10, 20, 50, 100, 200, 300, 400, 500]
 
     private let champagneGold = Color(red: 0.85, green: 0.75, blue: 0.55)
 
     var body: some View {
         VStack(spacing: 10) {
-            // 置信度提示（低置信度时提示数字/AI 变焦为算法估算）
             if appState.zoomConfidence != .high {
                 confidenceHint
             }
 
-            // 主倍率行（被“更多倍率”往上顶的就是这一行）
             mainZoomRow
 
-            // 展开的更多倍率行：位于主行与变焦条之间
-            if appState.showExtremeZoomPanel {
-                moreZoomRow
-            }
-
-            // 直变焦条：展开面板或长按唤出时都出现；范围始终 0.5–500
-            if appState.showExtremeZoomPanel || showFineSlider {
-                FineZoomRuler()
-                    .environmentObject(cameraManager)
-                    .environmentObject(hapticEngine)
+            if showWheel {
+                wheelPanel
+                    .transition(.opacity.combined(with: .move(edge: .bottom)))
             }
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 8)
+        .contentShape(Rectangle())
         .onLongPressGesture(minimumDuration: 0.35) {
             hapticEngine.selectionChanged()
             withAnimation(.easeInOut(duration: 0.2)) {
-                showFineSlider = true
+                showWheel = true
+                appState.showExtremeZoomPanel = true
             }
-
         }
     }
 
-    // MARK: - 主倍率行
+    // MARK: 主倍率行
 
     private var mainZoomRow: some View {
         HStack(spacing: 8) {
             ForEach(mainStops, id: \.self) { factor in
                 zoomButton(factor: factor)
             }
-            // 倒三角：展开/收起更多倍率
+            // 半轮盘开关：极影式转盘入口。
             Button {
                 hapticEngine.selectionChanged()
                 withAnimation(.easeInOut(duration: 0.22)) {
-                    appState.showExtremeZoomPanel.toggle()
+                    showWheel.toggle()
+                    appState.showExtremeZoomPanel = showWheel
                 }
-                if appState.showExtremeZoomPanel { showFineSlider = false }
             } label: {
-                Image(systemName: appState.showExtremeZoomPanel
-                      ? "chevron.down" : "chevron.up")
+                Image(systemName: showWheel ? "chevron.down" : "circle.dashed")
                     .font(.system(size: 13, weight: .bold))
-                    .foregroundColor(appState.showExtremeZoomPanel ? .black : champagneGold)
+                    .foregroundColor(showWheel ? .black : champagneGold)
                     .frame(width: 40, height: 40)
                     .background(
                         Circle()
-                            .fill(appState.showExtremeZoomPanel
-                                  ? champagneGold
-                                  : Color.black.opacity(0.35))
+                            .fill(showWheel ? champagneGold : Color.black.opacity(0.35))
+                    )
+                    .overlay(
+                        Circle().stroke(champagneGold.opacity(showWheel ? 0 : 0.5), lineWidth: 1)
                     )
             }
         }
     }
 
-    // MARK: - 更多倍率行（横滑）
+    // MARK: 半轮盘面板
 
-    private var moreZoomRow: some View {
-        ScrollView(.horizontal, showsIndicators: false) {
-            HStack(spacing: 8) {
-                ForEach(moreStops, id: \.self) { factor in
-                    zoomButton(factor: factor)
+    private var wheelPanel: some View {
+        VStack(spacing: 4) {
+            // 高倍快捷档（横滑）
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 8) {
+                    ForEach(highStops, id: \.self) { factor in
+                        zoomButton(factor: factor, compact: true)
+                    }
                 }
+                .padding(.horizontal, 2)
             }
+            FineZoomRuler()
+                .environmentObject(cameraManager)
+                .environmentObject(hapticEngine)
         }
     }
 
-    // MARK: - 单个倍率按钮（点击丝滑飞变焦）
+    // MARK: 单个倍率按钮（点击丝滑飞变焦）
 
-    private func zoomButton(factor: CGFloat) -> some View {
+    private func zoomButton(factor: CGFloat, compact: Bool = false) -> some View {
         let isActive = abs(cameraManager.currentZoomFactor - factor) < 0.05
         return Button {
             hapticEngine.selectionChanged()
-            // 任意倍率切换都走非线性连续丝滑变焦，跨硬件上限/镜头切换点不跳变。
             let distance = abs(cameraManager.currentZoomFactor - factor)
             let duration = min(0.32 + Double(distance) * 0.0009, 0.62)
             cameraManager.flyZoom(to: factor, duration: CGFloat(duration))
         } label: {
             Text(factor == 0.5 ? "0.5×" : "\(Int(factor))×")
-                .font(.system(size: 14, weight: .semibold))
+                .font(.system(size: compact ? 12 : 14, weight: .semibold))
                 .foregroundColor(isActive ? .black : .white)
-                .frame(width: 48, height: 40)
+                .frame(width: compact ? 44 : 48, height: 36)
                 .background(
                     RoundedRectangle(cornerRadius: 12)
                         .fill(isActive ? champagneGold : Color.black.opacity(0.35))
@@ -131,7 +128,7 @@ struct ZoomControlView: View {
         }
     }
 
-    // MARK: - 置信度提示
+    // MARK: 置信度提示
 
     private var confidenceHint: some View {
         Text(appState.zoomConfidence == .low
@@ -171,7 +168,7 @@ private struct FineZoomRuler: View {
     var body: some View {
         VStack(spacing: 2) {
             HStack {
-                Text("半轮盘变焦 · 0.5–500×")
+                Text("半轮盘 · 沿弧滑动 · 0.5–500×")
                     .font(.system(size: 11, weight: .medium))
                 Spacer()
                 Text(currentZoomLabel)
@@ -198,7 +195,10 @@ private struct FineZoomRuler: View {
                 onCommit: { v in
                     cameraManager.flyZoom(to: CGFloat(v), duration: 0.18)
                 },
-                haptic: { hapticEngine.selectionChanged() }
+                haptic: { hapticEngine.selectionChanged() },
+                stopHaptic: {
+                    hapticEngine.trigger(.zoomNode, type: .light)
+                }
             )
         }
         .padding(.horizontal, 10)

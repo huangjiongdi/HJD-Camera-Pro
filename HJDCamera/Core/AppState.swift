@@ -19,6 +19,8 @@ final class AppState: ObservableObject {
     @Published var showSettings = false
     @Published var showGallery = false
     @Published var showAIStudio = false
+    /// 极影式滤镜横滑条（拍摄页）。
+    @Published var showFilterStrip = false
     @Published var isRecording = false
     @Published var recordingDuration: TimeInterval = 0
     @Published var flashMode: AVCaptureDevice.FlashMode = .auto

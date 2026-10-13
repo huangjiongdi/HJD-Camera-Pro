@@ -20,6 +20,8 @@ struct SemiWheelView: View {
     var onChange: (Double) -> Void
     var onCommit: (Double) -> Void
     var haptic: (() -> Void)?
+    /// 跨过硬件档位（0.5/1/2/5…）时的加强震动。
+    var stopHaptic: (() -> Void)?
 
     /// 半轮盘覆盖的圆心角（弧度），左右各 maxAngle。
     private let maxAngle: Double = .pi * 0.78   // 约 140°
@@ -27,6 +29,10 @@ struct SemiWheelView: View {
 
     @State private var dragAngle: Double?      // 手指当前相对圆心的角（弧度）
     @State private var lastTickIndex: Int = -999
+    @State private var lastNearestStop: Double = -1
+
+    /// 硬件档位：进入这些档位的吸附区时给加强震动。
+    private let hardwareStops: [Double] = [0.5, 1, 2, 5]
 
     // 对数映射，和 LogWheelView 保持一致：0.5…500 一盘走完。
     private var logMin: Double { Foundation.log(range.lowerBound) }
@@ -104,9 +110,18 @@ struct SemiWheelView: View {
                     .onEnded { g in
                         let a = angleAt(g.location, center: center)
                         let z = zoom(for: min(max(a, -maxAngle), maxAngle))
-                        let snapped = nearestStop(to: z)
+                        // 靠近硬件档位（4% 以内）时直接吸附到硬件档；
+                        // 其它位置吸附到最近标记档。
+                        let snapped: Double
+                        if let hw = hardwareStops.min(by: { abs($0 - z) < abs($1 - z) }),
+                           abs(hw - z) / hw < 0.04 {
+                            snapped = hw
+                        } else {
+                            snapped = nearestStop(to: z)
+                        }
                         dragAngle = nil
                         lastTickIndex = -999
+                        lastNearestStop = -1
                         onCommit(snapped)
                     }
             )
@@ -145,6 +160,17 @@ struct SemiWheelView: View {
         if idx != lastTickIndex {
             lastTickIndex = idx
             haptic?()
+        }
+        // 进入硬件档位（0.5/1/2/5）吸附区时加强震动；离开后复位。
+        let nearest = hardwareStops.min { abs($0 - z) < abs($1 - z) } ?? -1
+        if nearest > 0 {
+            let within = abs(z - nearest) / nearest < 0.04
+            if within && lastNearestStop != nearest {
+                lastNearestStop = nearest
+                stopHaptic?()
+            } else if !within && lastNearestStop == nearest {
+                lastNearestStop = -1
+            }
         }
     }
 

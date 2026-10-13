@@ -70,6 +70,14 @@ struct CameraRootView: View {
                             .padding(.bottom, 8)
                     }
 
+                    // 极影式滤镜横滑条（分类/真实 LUT 缩略图/强度/长按对比）。
+                    if appState.showFilterStrip {
+                        FilterStripView()
+                            .environmentObject(LUTManager.shared)
+                            .environmentObject(hapticEngine)
+                            .padding(.bottom, 8)
+                    }
+
                     // Zoom control
                     ZoomControlView()
                         .environmentObject(appState)
