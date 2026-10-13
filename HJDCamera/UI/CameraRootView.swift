@@ -20,9 +20,10 @@ struct CameraRootView: View {
     private let champagneGold = Color(red: 0.85, green: 0.75, blue: 0.55)
 
     var body: some View {
-        GeometryReader { proxy in
+        GeometryReader { _ in
             ZStack {
-                // Full-bleed live preview (background layer).
+                // Full-bleed live preview (background layer). 仅预览层与识别框
+                // 忽略安全区，控制层一律保留在安全区内，灵动岛永不遮挡。
                 CameraPreviewContainer()
                     .environmentObject(appState)
                     .environmentObject(cameraManager)
@@ -30,20 +31,22 @@ struct CameraRootView: View {
                     .ignoresSafeArea()
 
                 // Live Vision AI overlay: recognition boxes + scene/lens chips.
+                // 识别框全屏铺满；顶部信息胶囊内部保证落在安全区内。
                 LiveVisionHUD()
                     .environmentObject(appState)
                     .environmentObject(cameraManager)
-                    .ignoresSafeArea()
 
-                // Foreground UI layered over the preview. Controls stay inside
-                // the safe area so the Dynamic Island never covers them.
+                // Foreground UI：整个控制容器不忽略安全区，由 SwiftUI 自动
+                // 把它限制在灵动岛下方、Home 指示条上方，不再依赖手动
+                // safeAreaInsets（旧写法在整体 ignoresSafeArea 后 inset 恒为 0，
+                // 导致灵动岛再次挡住顶部按钮）。
                 VStack(spacing: 0) {
                     TopStatusBar()
                         .environmentObject(appState)
                         .environmentObject(settingsStore)
-                        .padding(.top, max(proxy.safeAreaInsets.top, 8))
+                        .padding(.top, 6)
 
-                    Spacer()
+                    Spacer(minLength: 12)
 
                     // Zoom control
                     ZoomControlView()
@@ -63,8 +66,9 @@ struct CameraRootView: View {
                         .environmentObject(appState)
                         .environmentObject(cameraManager)
                         .environmentObject(hapticEngine)
-                        .padding(.bottom, max(proxy.safeAreaInsets.bottom - 8, 12))
+                        .padding(.bottom, 10)
                 }
+                .padding(.horizontal, 0)
 
                 // Pull-up professional control panel
                 if appState.showProControls {
@@ -77,7 +81,8 @@ struct CameraRootView: View {
                 }
             }
         }
-        .ignoresSafeArea()
+        // 根容器不调用 .ignoresSafeArea()：让 SwiftUI 为控制层自动避让
+        // 灵动岛与 Home 指示条；全屏元素各自忽略安全区。
         .gesture(
             DragGesture()
                 .onChanged { value in

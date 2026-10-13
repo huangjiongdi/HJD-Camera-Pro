@@ -15,27 +15,32 @@ struct LiveVisionHUD: View {
     private let champagneGold = Color(red: 0.85, green: 0.75, blue: 0.55)
 
     var body: some View {
-        GeometryReader { proxy in
-            ZStack(alignment: .top) {
-                // 识别框
+        ZStack {
+            // 识别框：铺满整个屏幕（含安全区），不随顶部胶囊避让。
+            GeometryReader { proxy in
                 if appState.aiPreviewLevel != .off && !appState.isRecording {
                     boxesLayer(in: proxy.size)
                 }
+            }
+            .ignoresSafeArea()
 
-                // 顶部信息胶囊（场景 + 实际镜头）
-                if appState.aiPreviewLevel != .off {
+            // 顶部信息胶囊（场景 + 实际镜头）：不忽略安全区，
+            // 永远落在灵动岛下方，不再被遮挡。
+            if appState.aiPreviewLevel != .off {
+                VStack {
                     HStack(spacing: 8) {
                         chip(systemName: "eye.fill",
                              text: appState.liveSceneLabel.isEmpty ? "实时识别中" : appState.liveSceneLabel,
-                             color: champagneGold)
+                             darkText: true, fill: champagneGold)
                         Spacer()
                         chip(systemName: "camera.aperture",
                              text: "\(cameraManager.activeLensLabel) · \(cameraManager.activeFocalText)",
-                             color: .white)
+                             darkText: false, fill: Color.black.opacity(0.55))
                     }
                     .padding(.horizontal, 14)
                     .padding(.top, 10)
                     .allowsHitTesting(false)
+                    Spacer()
                 }
             }
         }
@@ -86,7 +91,7 @@ struct LiveVisionHUD: View {
         }
     }
 
-    private func chip(systemName: String, text: String, color: Color) -> some View {
+    private func chip(systemName: String, text: String, darkText: Bool, fill: Color) -> some View {
         HStack(spacing: 5) {
             Image(systemName: systemName)
                 .font(.system(size: 10))
@@ -94,13 +99,9 @@ struct LiveVisionHUD: View {
                 .font(.system(size: 11, weight: .semibold))
                 .lineLimit(1)
         }
-        .foregroundColor(color == .white ? .white : .black)
+        .foregroundColor(darkText ? .black : .white)
         .padding(.horizontal, 9)
         .padding(.vertical, 6)
-        .background(
-            Capsule().fill(
-                (color == .white ? Color.black.opacity(0.55) : color).opacity(color == .white ? 1 : 0.92)
-            )
-        )
+        .background(Capsule().fill(fill))
     }
 }

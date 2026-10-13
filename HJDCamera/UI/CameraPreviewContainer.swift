@@ -26,6 +26,10 @@ struct CameraPreviewContainer: View {
                 CameraPreviewView(session: cameraManager.session)
                     .environmentObject(cameraManager)
                     .frame(width: geo.size.width, height: geo.size.height)
+                    // 硬件上限以上（>100×）的数字裁切由 SwiftUI 层放大，
+                    // scaleEffect 不参与布局，不会被每帧重布局重置，
+                    // 因此画面可以一直放大到 500×（所见即所得，中心裁切）。
+                    .scaleEffect(cameraManager.digitalCropScale, anchor: .center)
 
                 // Assistive overlays
                 if settingsStore.gridEnabled {
@@ -44,11 +48,6 @@ struct CameraPreviewContainer: View {
 
                 // Detection boxes
                 detectionBoxes
-
-                // AI enhancement badge
-                if appState.aiPreviewLevel != .off {
-                    aiBadge
-                }
             }
             .frame(width: geo.size.width, height: geo.size.height)
             .clipped()
@@ -75,29 +74,6 @@ struct CameraPreviewContainer: View {
         }
     }
 
-    // MARK: - AI Badge
-
-    private var aiBadge: some View {
-        VStack {
-            HStack {
-                Image(systemName: "sparkles")
-                    .font(.system(size: 12, weight: .semibold))
-                    .foregroundColor(champagneGold)
-                Text("AI \(appState.aiPreviewLevel.rawValue)")
-                    .font(.system(size: 11, weight: .medium))
-                    .foregroundColor(champagneGold)
-            }
-            .padding(.horizontal, 10)
-            .padding(.vertical, 5)
-            .background(
-                Capsule()
-                    .fill(Color.black.opacity(0.5))
-                    .overlay(Capsule().stroke(champagneGold.opacity(0.5), lineWidth: 0.5))
-            )
-            Spacer()
-        }
-        .padding(.top, 12)
-    }
 }
 
 // MARK: - Detection Box

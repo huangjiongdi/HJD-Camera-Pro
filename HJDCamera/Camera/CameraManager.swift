@@ -26,6 +26,10 @@ final class CameraManager: NSObject, ObservableObject {
     @Published var movieOutput = AVCaptureMovieFileOutput()
     @Published var videoDataOutput = AVCaptureVideoDataOutput()
     @Published var previewLayer: AVCaptureVideoPreviewLayer?
+    /// 数字裁切倍率（>硬件上限后），由 SwiftUI 层 scaleEffect 驱动，确保 100×
+    /// 以上的数字变焦在每帧重布局下都不会被重置（直接改 previewLayer.transform
+    /// 会被 SwiftUI 布局冲掉，真机表现为最高卡在 100×）。
+    @Published var digitalCropScale: CGFloat = 1.0
     @Published var isSessionRunning = false
     /// The display zoom factor (what the UI shows: 0.5 / 1 / 2 / 5 / 10 / ... / 500).
     @Published var currentZoomFactor: CGFloat = 1.0
@@ -339,44 +343,75 @@ final class CameraManager: NSObject, ObservableObject {
         if Thread.isMainThread { apply() } else { DispatchQueue.main.async(execute: apply) }
     }
 
-    /// Scale the preview layer itself for the all-digital zone (>hardware max).
-    /// Independent of capture so it can't exceed the device's hardware limit.
+    /// 数字裁切区（>硬件上限）的预览放大倍率。
+    ///
+    /// 不再直接修改 AVCaptureVideoPreviewLayer 的 transform：该层由 SwiftUI
+    /// 每帧（currentZoomFactor 发布）重新布局，任何 transform 都会被布局冲掉，
+    /// 真机表现为画面在硬件上限（约 100× 显示倍率）以上不再放大。
+    /// 改为发布 digitalCropScale，由 CameraPreviewContainer 的 .scaleEffect
+    /// 在 SwiftUI 层放大——scaleEffect 不参与布局，永远不会被重置。
     private func applyDigitalCrop(_ scale: CGFloat) {
         let s = max(scale, 1.0)
-        DispatchQueue.main.async {
-            guard let layer = self.previewLayer else { return }
-            CATransaction.begin()
-            CATransaction.setDisableActions(true)
-            layer.setAffineTransform(CGAffineTransform(scaleX: s, y: s))
-            CATransaction.commit()
+        if Thread.isMainThread {
+            digitalCropScale = s
+        } else {
+            DispatchQueue.main.async {
+                self.digitalCropScale = s
+            }
         }
     }
 
     // MARK: - Capture
 
     func capturePhoto() {
-        // RAW capture must use the dedicated raw initializer; `rawFileType` is
-        // read-only on a normal photo settings object.
-        let wantsRaw = AppState.shared.rawEnabled
-            && photoOutput.availableRawPhotoPixelFormatTypes.first != nil
-
-        let settings: AVCapturePhotoSettings
-        if wantsRaw, let rawFormat = photoOutput.availableRawPhotoPixelFormatTypes.first {
-            let raw = AVCapturePhotoSettings(rawPixelFormatType: rawFormat)
-            raw.flashMode = AppState.shared.flashMode
-            raw.previewPhotoFormat = [
-                kCVPixelBufferPixelFormatTypeKey as String: kCVPixelFormatType_32BGRA
-            ]
-            settings = raw
-        } else {
-            let normal = AVCapturePhotoSettings()
-            normal.flashMode = AppState.shared.flashMode
-            if photoOutput.availablePhotoCodecTypes.contains(.hevc) {
-                normal.photoQualityPrioritization = .balanced
+        // 拍照与逐帧变焦共用 sessionQueue，避免与 lockForConfiguration 竞争；
+        // 也保证 AVCapturePhotoSettings 的校验在固定队列上完成。
+        sessionQueue.async { [weak self] in
+            guard let self = self else { return }
+            guard self.session.isRunning,
+                  self.photoOutput.connection(with: .video) != nil else {
+                DispatchQueue.main.async {
+                    NotificationCenter.default.post(name: .hjdStorageWarning,
+                                                    object: "相机尚未就绪，请稍后再试")
+                }
+                return
             }
-            settings = normal
+
+            let output = self.photoOutput
+            // 闪光灯必须是当前会话配置真实支持的模式。否则 capturePhoto
+            // 会立即抛 NSInvalidArgumentException（虚拟三摄/前置/某些视频配置
+            // 下 supportedFlashModes 可能为空或只有 .off），真机表现为一点快门
+            // 就闪退。
+            let supportedFlash = Set(output.supportedFlashModes.map { $0.intValue })
+            let wantedFlash = AppState.shared.flashMode
+            let flash: AVCaptureDevice.FlashMode = supportedFlash.contains(wantedFlash.rawValue)
+                ? wantedFlash : .off
+
+            // RAW capture must use the dedicated raw initializer; `rawFileType` is
+            // read-only on a normal photo settings object.
+            let settings: AVCapturePhotoSettings
+            if AppState.shared.rawEnabled,
+               let rawFormat = output.availableRawPhotoPixelFormatTypes.first {
+                let raw = AVCapturePhotoSettings(rawPixelFormatType: rawFormat)
+                raw.flashMode = flash
+                raw.previewPhotoFormat = [
+                    kCVPixelBufferPixelFormatTypeKey as String: kCVPixelFormatType_32BGRA
+                ]
+                settings = raw
+            } else {
+                let normal = AVCapturePhotoSettings()
+                normal.flashMode = flash
+                normal.photoQualityPrioritization = .balanced
+                settings = normal
+            }
+
+            if let conn = output.connection(with: .video),
+               conn.isVideoRotationAngleSupported(OrientationObserver.shared.videoRotationAngle) {
+                conn.videoRotationAngle = OrientationObserver.shared.videoRotationAngle
+            }
+
+            output.capturePhoto(with: settings, delegate: PhotoCapturePipeline.shared)
         }
-        photoOutput.capturePhoto(with: settings, delegate: PhotoCapturePipeline.shared)
     }
 
     // MARK: - Recording

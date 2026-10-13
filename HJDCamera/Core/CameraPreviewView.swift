@@ -28,6 +28,12 @@ struct CameraPreviewView: UIViewRepresentable {
         let view = PreviewContainerView()
         view.videoPreviewLayer.session = session
         view.videoPreviewLayer.videoGravity = .resizeAspectFill
+        // Expose the live layer for rotation/metadata inspection. 硬件上限
+        // 以上的数字裁切（>100× 到 500×）由 CameraPreviewContainer 的
+        // .scaleEffect 驱动，不再直接改 layer.transform。
+        DispatchQueue.main.async {
+            CameraManager.shared.previewLayer = view.videoPreviewLayer
+        }
 
         let tap = UITapGestureRecognizer(target: context.coordinator,
                                           action: #selector(Coordinator.handleTap(_:)))
