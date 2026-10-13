@@ -31,6 +31,10 @@ struct RetroFrameView: View {
     private let champagneGold = Color(red: 0.85, green: 0.75, blue: 0.55)
     private let engine = RetroFrameEngine.shared
 
+    init(asset: PHAsset) {
+        self.asset = asset
+    }
+
     enum FrameStyle: String, CaseIterable {
         case polaroid = "拍立得"
         case film = "胶片"
@@ -193,7 +197,7 @@ struct RetroFrameView: View {
         }
     }
 
-    private var workItem: DispatchWorkItem?
+    @State private var workItem: DispatchWorkItem?
     private func renderPreview() {
         workItem?.cancel()
         let work = DispatchWorkItem {

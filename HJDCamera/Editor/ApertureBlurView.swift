@@ -35,6 +35,10 @@ struct ApertureBlurView: View {
     private let champagneGold = Color(red: 0.85, green: 0.75, blue: 0.55)
     private let fStops: [Double] = [1.4, 1.8, 2.0, 2.8, 4.0, 5.6, 8.0, 11.0, 16.0]
 
+    init(asset: PHAsset) {
+        self.asset = asset
+    }
+
     var body: some View {
         ZStack {
             Color.black.ignoresSafeArea()
@@ -252,7 +256,7 @@ struct ApertureBlurView: View {
         }
     }
 
-    private var renderWorkItem: DispatchWorkItem?
+    @State private var renderWorkItem: DispatchWorkItem?
     private func renderPreview() {
         renderWorkItem?.cancel()
         let work = DispatchWorkItem {

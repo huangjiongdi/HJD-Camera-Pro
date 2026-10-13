@@ -99,7 +99,7 @@ struct EXIFInfo {
 
         var fileType: String?
         if let uti {
-            fileType = UTType(rawValue: uti)?.preferredFilenameExtension?.uppercased()
+            fileType = EXIFInfo.preferredFileExtension(uti: uti)
         }
 
         return EXIFInfo(
@@ -123,5 +123,30 @@ struct EXIFInfo {
     private static func num(_ any: Any?) -> Double? {
         if let n = any as? NSNumber { return n.doubleValue }
         return nil
+    }
+
+    private static func preferredFileExtension(uti: String) -> String? {
+        let map: [String: String] = [
+            "public.heic": "HEIC",
+            "public.heif": "HEIF",
+            "public.jpeg": "JPEG",
+            "public.png": "PNG",
+            "public.tiff": "TIFF",
+            "public.mpeg-4": "MP4",
+            "com.apple.quicktime-movie": "MOV",
+            "public.3gpp": "3GP",
+            "public.avi": "AVI",
+            "com.adobe.raw-image": "DNG",
+            "com.canon.cr2-raw-image": "CR2",
+            "com.canon.cr3-raw-image": "CR3",
+            "com.nikon.raw-image": "NEF",
+            "com.sony.raw-image": "ARW",
+            "com.apple.photos.raw": "RAW",
+            "public.dng": "DNG"
+        ]
+        if let v = map[uti] { return v }
+        // 兜底：UTI 末段（如 public.jpeg -> JPEG）。
+        let tail = uti.split(separator: ".").last.map { $0.uppercased() }
+        return tail
     }
 }
