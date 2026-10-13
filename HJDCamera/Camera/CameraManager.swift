@@ -578,7 +578,8 @@ final class CameraManager: NSObject, ObservableObject {
         }
         movieOutput.setOutputSettings(outputSettings, for: connection)
 
-        // 3) 防抖（按设置；不支持的档位自动降级）。
+        // 3) 防抖（按设置；AVCaptureConnection 没有逐档位查询 API，
+        // 若硬件不支持所设档位，系统会自动降到最接近的可用档位）。
         if connection.isVideoStabilizationSupported {
             switch s.videoStabilization {
             case .off:
@@ -586,13 +587,9 @@ final class CameraManager: NSObject, ObservableObject {
             case .standard:
                 connection.preferredVideoStabilizationMode = .standard
             case .cinematic:
-                connection.preferredVideoStabilizationMode =
-                    connection.isVideoStabilizationModeSupported(.cinematic) ? .cinematic : .standard
+                connection.preferredVideoStabilizationMode = .cinematic
             case .cinematicExtended:
-                connection.preferredVideoStabilizationMode =
-                    connection.isVideoStabilizationModeSupported(.cinematicExtended)
-                    ? .cinematicExtended
-                    : (connection.isVideoStabilizationModeSupported(.cinematic) ? .cinematic : .standard)
+                connection.preferredVideoStabilizationMode = .cinematicExtended
             }
         }
     }
