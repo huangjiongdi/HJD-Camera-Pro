@@ -55,14 +55,17 @@ final class PhotoLibraryExporter {
         guard await requestAuthorization() else {
             return .failure(.permissionDenied)
         }
-        guard StorageManager.shared.availableSpace() > Int64(data.count) else {
+        let space = StorageManager.shared.availableSpace()
+        guard space == 0 || space > Int64(data.count) else {
             return .failure(.insufficientSpace)
         }
 
         do {
             var localId: String?
             try await PHPhotoLibrary.shared().performChanges {
-                let creation = PHAssetCreationRequest()
+                // Must use the factory initializer — a bare PHAssetCreationRequest()
+                // is not attached to the change request and silently saves nothing.
+                let creation = PHAssetCreationRequest.creationRequestForAsset()
                 creation.addResource(with: .photo, data: data, options: nil)
                 localId = creation.placeholderForCreatedAsset?.localIdentifier
             }
@@ -84,14 +87,15 @@ final class PhotoLibraryExporter {
             return .failure(.permissionDenied)
         }
         let size = (try? fileURL.resourceValues(forKeys: [.fileSizeKey]).fileSize) ?? 0
-        guard StorageManager.shared.availableSpace() > Int64(size) else {
+        let space = StorageManager.shared.availableSpace()
+        guard space == 0 || space > Int64(size) else {
             return .failure(.insufficientSpace)
         }
 
         do {
             var localId: String?
             try await PHPhotoLibrary.shared().performChanges {
-                let creation = PHAssetCreationRequest()
+                let creation = PHAssetCreationRequest.creationRequestForAsset()
                 creation.addResource(with: .video, fileURL: fileURL, options: nil)
                 localId = creation.placeholderForCreatedAsset?.localIdentifier
             }

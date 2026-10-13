@@ -18,7 +18,10 @@ final class DeviceCapabilityManager {
     }
 
     var virtualDevice: AVCaptureDevice? {
+        // Prefer the most capable *virtual* back device so the system handles
+        // lens switching (ultra-wide / wide / tele) via videoZoomFactor.
         AVCaptureDevice.default(.builtInTripleCamera, for: .video, position: .back)
+            ?? AVCaptureDevice.default(.builtInDualWideCamera, for: .video, position: .back)
             ?? AVCaptureDevice.default(.builtInDualCamera, for: .video, position: .back)
             ?? defaultVideoDevice
     }
