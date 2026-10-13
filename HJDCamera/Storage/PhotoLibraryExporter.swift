@@ -65,7 +65,9 @@ final class PhotoLibraryExporter {
             try await PHPhotoLibrary.shared().performChanges {
                 // Must use the factory initializer — a bare PHAssetCreationRequest()
                 // is not attached to the change request and silently saves nothing.
-                let creation = PHAssetCreationRequest.creationRequestForAsset()
+                // iOS 27 SDK 把工厂方法重命名为 forAsset()；裸 init 会崩溃
+                // （unrecognized selector → SIGABRT）。
+                let creation = PHAssetCreationRequest.forAsset()
                 creation.addResource(with: .photo, data: data, options: nil)
                 localId = creation.placeholderForCreatedAsset?.localIdentifier
             }
@@ -95,7 +97,7 @@ final class PhotoLibraryExporter {
         do {
             var localId: String?
             try await PHPhotoLibrary.shared().performChanges {
-                let creation = PHAssetCreationRequest.creationRequestForAsset()
+                let creation = PHAssetCreationRequest.forAsset()
                 creation.addResource(with: .video, fileURL: fileURL, options: nil)
                 localId = creation.placeholderForCreatedAsset?.localIdentifier
             }
