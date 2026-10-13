@@ -111,22 +111,56 @@ final class PhotoCapturePipeline: NSObject, AVCapturePhotoCaptureDelegate, Obser
     private func enhance(originalURL: URL, photo: AVCapturePhoto) {
         DispatchQueue.main.async {
             AppState.shared.isProcessing = true
-            AppState.shared.processingProgress = 0.1
+            AppState.shared.processingProgress = 0.2
         }
         workQueue.async {
-            // 1) Try real AI super-resolution (Real-ESRGAN via CoreML).
-            if let source = CIImage(contentsOf: originalURL) {
-                AIModelRunner.shared.run(model: "sr_generic", input: source) { [weak self] upscaled in
-                    guard let self = self else { return }
-                    // The completion fires on the main thread — re-encode on workQueue.
-                    self.workQueue.async {
-                        self.finishEnhancement(image: upscaled ?? source, fallbackOriginal: originalURL)
-                    }
-                }
+            guard let source = CIImage(contentsOf: originalURL) else {
+                // Cannot decode: keep the original file as the final asset.
+                self.finishEnhancement(image: nil, fallbackOriginal: originalURL)
                 return
             }
-            // Could not decode — fall straight back to the original file.
-            self.finishEnhancement(image: nil, fallbackOriginal: originalURL)
+
+            var image = source
+
+            // High-zoom digital crop: when the requested zoom is beyond the
+            // hardware maximum, centre-crop the still to match the live preview
+            // and scale it back to full output size with Lanczos.
+            let crop = CameraManager.shared.currentDigitalCrop
+            if crop > 1.01 {
+                let extent = source.extent
+                let w = extent.width / crop
+                let h = extent.height / crop
+                let rect = CGRect(x: extent.midX - w / 2.0,
+                                  y: extent.midY - h / 2.0,
+                                  width: w, height: h)
+                let recentered = source
+                    .cropped(to: rect)
+                    .transformed(by: CGAffineTransform(translationX: -rect.origin.x,
+                                                       y: -rect.origin.y))
+                let scaled = recentered
+                    .applyingFilter("CILanczosScaleTransform",
+                                    parameters: [kCIInputScaleKey: crop,
+                                                 kCIInputAspectRatioKey: 1.0])
+                    .cropped(to: CGRect(origin: .zero,
+                                        size: CGSize(width: extent.width, height: extent.height)))
+                image = scaled
+            }
+
+            // Fast, deterministic enhancement (sharpen + local contrast).
+            // The heavy tiled CoreML super-resolution is an offline AI Studio
+            // job; running it on a full-resolution still here produced thousands
+            // of tiles and was the reason the photo never reached the library.
+            image = image
+                .applyingFilter("CIUnsharpMask", parameters: [
+                    kCIInputRadiusKey: 1.5,
+                    kCIInputIntensityKey: 0.6
+                ])
+                .applyingFilter("CIColorControls", parameters: [
+                    kCIInputContrastKey: 1.03,
+                    kCIInputSaturationKey: 1.02
+                ])
+
+            self.finishEnhancement(image: image, fallbackOriginal: originalURL)
         }
     }
 
@@ -139,11 +173,9 @@ final class PhotoCapturePipeline: NSObject, AVCapturePhotoCaptureDelegate, Obser
         var success = false
 
         if let image = image {
-            // Gentle sharpen on top of the AI result.
-            let sharpened = image.applyingFilter("CISharpenLuminance",
-                                                  parameters: [kCIInputSharpnessKey: 0.35])
-            if let data = try? ciContext.jpegRepresentation(of: sharpened,
-                                                            colorSpace: sharpened.colorSpace ?? CGColorSpaceCreateDeviceRGB()) {
+            let cs = image.colorSpace ?? CGColorSpaceCreateDeviceRGB()
+            if let data = try? ciContext.jpegRepresentation(of: image,
+                                                            colorSpace: cs) {
                 try? data.write(to: outURL, options: .atomic)
                 success = FileManager.default.fileExists(atPath: outURL.path)
             }
@@ -151,12 +183,20 @@ final class PhotoCapturePipeline: NSObject, AVCapturePhotoCaptureDelegate, Obser
 
         let finalURL = success ? outURL : fallbackOriginal
 
-        // Export to the system photo library (this is what was missing — nothing
-        // was ever saved to Photos).
+        // Save exactly one asset to the system photo library. If the enhanced
+        // encode failed, the original is exported instead — the shot is never
+        // lost. A failure here surfaces a real storage/permission error.
         if let data = try? Data(contentsOf: finalURL) {
+            let semaphore = DispatchSemaphore(value: 0)
             Task.detached {
-                _ = await PhotoLibraryExporter.shared.exportPhoto(data: data)
+                let result = await PhotoLibraryExporter.shared.exportPhoto(data: data)
+                if case .failure(let err) = result {
+                    DiagnosticLogger.shared.error("Photo save failed: \(err)")
+                    NotificationCenter.default.post(name: .hjdStorageWarning, object: "\(err)")
+                }
+                semaphore.signal()
             }
+            semaphore.wait()
         }
 
         DispatchQueue.main.async {

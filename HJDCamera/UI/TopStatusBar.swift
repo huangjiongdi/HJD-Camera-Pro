@@ -18,31 +18,34 @@ struct TopStatusBar: View {
 
     var body: some View {
         VStack(spacing: 6) {
-            // Main row
+            // Row 1 — corner controls only. These sit at the two sides of the
+            // Dynamic Island rather than underneath its centre.
             HStack {
-                // Left controls
                 HStack(spacing: 16) {
                     flashButton
                     timerButton
                     gridButton
                 }
-
                 Spacer()
-
-                // Center info
-                centerInfo
-                    .font(.system(size: 12, weight: .medium, design: .monospaced))
-                    .foregroundColor(.white.opacity(0.85))
-
-                Spacer()
-
-                // Right controls
                 HStack(spacing: 16) {
                     rawButton
                     levelButton
                     settingsButton
                 }
             }
+
+            // Row 2 — mode / format info, full-width and BELOW the Dynamic
+            // Island so the island never covers it.
+            centerInfo
+                .font(.system(size: 12, weight: .medium, design: .monospaced))
+                .foregroundColor(.white.opacity(0.88))
+                .padding(.horizontal, 10)
+                .padding(.vertical, 5)
+                .background(Capsule().fill(Color.black.opacity(0.35)))
+                .lineLimit(1)
+                .minimumScaleFactor(0.7)
+                .contentShape(Capsule())
+                .onTapGesture { withAnimation { expanded.toggle() } }
 
             // Expanded detail row
             if expanded {
@@ -51,12 +54,9 @@ struct TopStatusBar: View {
             }
         }
         .padding(.horizontal, 16)
-        .padding(.top, 8)
+        .padding(.top, 4)
         .padding(.bottom, 4)
-        .background(Color.black.opacity(0.3))
-        .onTapGesture {
-            withAnimation { expanded.toggle() }
-        }
+        // Tap on the format pill expands details; the icon buttons keep taps.
     }
 
     // MARK: - Left
@@ -68,8 +68,11 @@ struct TopStatusBar: View {
             let mode = AppState.shared.flashMode
             Image(systemName: flashIcon(for: mode))
                 .font(.system(size: 16, weight: .medium))
-                .foregroundColor(mode == .off ? .gray : champagneGold)
+                .foregroundColor(mode == .off ? .white.opacity(0.8) : champagneGold)
+                .frame(width: 38, height: 38)
+                .background(Circle().fill(Color.black.opacity(0.35)))
         }
+        .buttonStyle(.plain)
     }
 
     private func flashIcon(for mode: AVCaptureDevice.FlashMode) -> String {
@@ -96,8 +99,11 @@ struct TopStatusBar: View {
         } label: {
             Image(systemName: "timer")
                 .font(.system(size: 16, weight: .medium))
-                .foregroundColor(appState.timerDuration > 0 ? champagneGold : .white.opacity(0.8))
+                .foregroundColor(appState.timerDuration > 0 ? champagneGold : .white.opacity(0.85))
+                .frame(width: 38, height: 38)
+                .background(Circle().fill(Color.black.opacity(0.35)))
         }
+        .buttonStyle(.plain)
     }
 
     private func cycleTimer() {
@@ -112,8 +118,11 @@ struct TopStatusBar: View {
         } label: {
             Image(systemName: appState.gridEnabled ? "grid" : "grid.circle")
                 .font(.system(size: 16, weight: .medium))
-                .foregroundColor(appState.gridEnabled ? champagneGold : .white.opacity(0.8))
+                .foregroundColor(appState.gridEnabled ? champagneGold : .white.opacity(0.85))
+                .frame(width: 38, height: 38)
+                .background(Circle().fill(Color.black.opacity(0.35)))
         }
+        .buttonStyle(.plain)
     }
 
     // MARK: - Center
@@ -153,15 +162,16 @@ struct TopStatusBar: View {
             appState.rawEnabled.toggle()
         } label: {
             Text("RAW")
-                .font(.system(size: 11, weight: appState.rawEnabled ? .bold : .regular, design: .monospaced))
-                .foregroundColor(appState.rawEnabled ? champagneGold : .white.opacity(0.7))
-                .padding(.horizontal, 6)
-                .padding(.vertical, 3)
+                .font(.system(size: 11, weight: appState.rawEnabled ? .bold : .medium, design: .monospaced))
+                .foregroundColor(appState.rawEnabled ? champagneGold : .white.opacity(0.85))
+                .frame(width: 44, height: 38)
                 .background(
-                    RoundedRectangle(cornerRadius: 4)
-                        .stroke(appState.rawEnabled ? champagneGold : Color.white.opacity(0.3), lineWidth: 1)
+                    Capsule()
+                        .fill(Color.black.opacity(0.35))
+                        .overlay(Capsule().stroke(appState.rawEnabled ? champagneGold : Color.white.opacity(0.3), lineWidth: 1))
                 )
         }
+        .buttonStyle(.plain)
     }
 
     private var levelButton: some View {
@@ -170,8 +180,11 @@ struct TopStatusBar: View {
         } label: {
             Image(systemName: appState.levelEnabled ? "level" : "level")
                 .font(.system(size: 16, weight: .medium))
-                .foregroundColor(appState.levelEnabled ? champagneGold : .white.opacity(0.8))
+                .foregroundColor(appState.levelEnabled ? champagneGold : .white.opacity(0.85))
+                .frame(width: 38, height: 38)
+                .background(Circle().fill(Color.black.opacity(0.35)))
         }
+        .buttonStyle(.plain)
     }
 
     private var settingsButton: some View {
@@ -180,8 +193,11 @@ struct TopStatusBar: View {
         } label: {
             Image(systemName: "gearshape.fill")
                 .font(.system(size: 16, weight: .medium))
-                .foregroundColor(.white.opacity(0.85))
+                .foregroundColor(.white.opacity(0.9))
+                .frame(width: 38, height: 38)
+                .background(Circle().fill(Color.black.opacity(0.35)))
         }
+        .buttonStyle(.plain)
     }
 
     // MARK: - Expanded Detail

@@ -20,51 +20,55 @@ struct CameraRootView: View {
     private let champagneGold = Color(red: 0.85, green: 0.75, blue: 0.55)
 
     var body: some View {
-        ZStack {
-            // Full-bleed live preview (background layer).
-            CameraPreviewContainer()
-                .environmentObject(appState)
-                .environmentObject(cameraManager)
-                .environmentObject(settingsStore)
-                .ignoresSafeArea()
-
-            // Foreground UI layered over the preview.
-            VStack(spacing: 0) {
-                TopStatusBar()
-                    .environmentObject(appState)
-                    .environmentObject(settingsStore)
-
-                Spacer()
-
-                // Zoom control
-                ZoomControlView()
+        GeometryReader { proxy in
+            ZStack {
+                // Full-bleed live preview (background layer).
+                CameraPreviewContainer()
                     .environmentObject(appState)
                     .environmentObject(cameraManager)
-                    .environmentObject(hapticEngine)
-                    .padding(.bottom, 8)
-
-                // Mode selector
-                ModeSelector()
-                    .environmentObject(appState)
-                    .environmentObject(hapticEngine)
-                    .padding(.bottom, 12)
-
-                // Shutter bar
-                ShutterBar()
-                    .environmentObject(appState)
-                    .environmentObject(cameraManager)
-                    .environmentObject(hapticEngine)
-                    .padding(.bottom, 24)
-            }
-
-            // Pull-up professional control panel
-            if appState.showProControls {
-                ProControlPanel()
-                    .environmentObject(appState)
                     .environmentObject(settingsStore)
-                    .environmentObject(hapticEngine)
-                    .transition(.move(edge: .bottom))
-                    .zIndex(10)
+                    .ignoresSafeArea()
+
+                // Foreground UI layered over the preview. Controls stay inside
+                // the safe area so the Dynamic Island never covers them.
+                VStack(spacing: 0) {
+                    TopStatusBar()
+                        .environmentObject(appState)
+                        .environmentObject(settingsStore)
+                        .padding(.top, max(proxy.safeAreaInsets.top, 8))
+
+                    Spacer()
+
+                    // Zoom control
+                    ZoomControlView()
+                        .environmentObject(appState)
+                        .environmentObject(cameraManager)
+                        .environmentObject(hapticEngine)
+                        .padding(.bottom, 8)
+
+                    // Mode selector
+                    ModeSelector()
+                        .environmentObject(appState)
+                        .environmentObject(hapticEngine)
+                        .padding(.bottom, 12)
+
+                    // Shutter bar
+                    ShutterBar()
+                        .environmentObject(appState)
+                        .environmentObject(cameraManager)
+                        .environmentObject(hapticEngine)
+                        .padding(.bottom, max(proxy.safeAreaInsets.bottom - 8, 12))
+                }
+
+                // Pull-up professional control panel
+                if appState.showProControls {
+                    ProControlPanel()
+                        .environmentObject(appState)
+                        .environmentObject(settingsStore)
+                        .environmentObject(hapticEngine)
+                        .transition(.move(edge: .bottom))
+                        .zIndex(10)
+                }
             }
         }
         .ignoresSafeArea()

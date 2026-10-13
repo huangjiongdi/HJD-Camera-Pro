@@ -31,27 +31,37 @@ struct ZoomControlView: View {
                     .background(Capsule().fill(Color.black.opacity(0.5)))
             }
 
-            // Standard zoom buttons
-            HStack(spacing: 12) {
+            // Standard zoom buttons — whole row long-press reveals the
+            // 0.5–500 slider (per-button gestures can swallow the tap).
+            HStack(spacing: 8) {
                 ForEach(ZoomLevel.standard) { level in
                     zoomButton(level)
                 }
-                // Entry to extreme telephoto (25×–500×).
+                // Entry to extreme telephoto (25×–500×) and the full slider.
                 Button {
                     withAnimation { appState.showExtremeZoomPanel.toggle() }
                     hapticEngine.selectionChanged()
                 } label: {
                     Text("500×")
-                        .font(.system(size: 13, weight: .semibold, design: .monospaced))
-                        .foregroundColor(appState.showExtremeZoomPanel ? champagneGold : .white.opacity(0.7))
-                        .padding(.horizontal, 10)
-                        .padding(.vertical, 6)
+                        .font(.system(size: 13, weight: .bold, design: .monospaced))
+                        .foregroundColor(appState.showExtremeZoomPanel ? .black : champagneGold)
+                        .frame(width: 50, height: 42)
                         .background(
-                            RoundedRectangle(cornerRadius: 16)
-                                .fill(appState.showExtremeZoomPanel ? champagneGold.opacity(0.2) : Color.white.opacity(0.08))
+                            RoundedRectangle(cornerRadius: 10)
+                                .fill(appState.showExtremeZoomPanel ? champagneGold : Color.black.opacity(0.35))
                         )
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 10)
+                                .stroke(champagneGold.opacity(0.8), lineWidth: 1.2)
+                        )
+                        .contentShape(RoundedRectangle(cornerRadius: 10))
                 }
                 .buttonStyle(.plain)
+            }
+            .onLongPressGesture(minimumDuration: 0.35) {
+                sliderValue = appState.currentZoomFactor
+                withAnimation { showFineSlider = true }
+                hapticEngine.selectionChanged()
             }
 
             // Full-range slider (0.5×–500×), shown on long-press of any zoom button.
@@ -77,34 +87,26 @@ struct ZoomControlView: View {
         return Button {
             selectZoom(level)
         } label: {
-            VStack(spacing: 2) {
+            VStack(spacing: 1) {
                 Text(level.label)
-                    .font(.system(size: isSelected ? 16 : 13, weight: isSelected ? .bold : .medium, design: .monospaced))
-                    .foregroundColor(isSelected ? champagneGold : .white.opacity(0.8))
+                    .font(.system(size: 15, weight: isSelected ? .bold : .semibold, design: .monospaced))
+                    .foregroundColor(isSelected ? .black : .white)
                 Text(sourceLabel(level.source))
                     .font(.system(size: 8))
-                    .foregroundColor(sourceColor(level.source))
+                    .foregroundColor(isSelected ? .black.opacity(0.65) : sourceColor(level.source))
             }
-            .padding(.horizontal, 10)
-            .padding(.vertical, 6)
+            .frame(width: 50, height: 42)
             .background(
-                RoundedRectangle(cornerRadius: 16)
-                    .fill(isSelected ? champagneGold.opacity(0.15) : Color.clear)
+                RoundedRectangle(cornerRadius: 10)
+                    .fill(isSelected ? champagneGold : Color.black.opacity(0.35))
             )
             .overlay(
-                RoundedRectangle(cornerRadius: 16)
-                    .stroke(isSelected ? champagneGold : Color.clear, lineWidth: 1)
+                RoundedRectangle(cornerRadius: 10)
+                    .stroke(isSelected ? champagneGold : Color.white.opacity(0.45), lineWidth: 1.2)
             )
+            .contentShape(RoundedRectangle(cornerRadius: 10))
         }
         .buttonStyle(.plain)
-        // Long-press anywhere on the zoom row reveals the 0.5–500 slider.
-        .simultaneousGesture(
-            LongPressGesture(minimumDuration: 0.35).onEnded { _ in
-                sliderValue = appState.currentZoomFactor
-                withAnimation { showFineSlider = true }
-                hapticEngine.selectionChanged()
-            }
-        )
     }
 
     private func sourceLabel(_ source: ZoomSource) -> String {
@@ -126,9 +128,15 @@ struct ZoomControlView: View {
     }
 
     private func selectZoom(_ level: ZoomLevel) {
-        // Animated ramp between focal lengths (no hard jump).
         appState.setZoom(level.factor, source: level.source)
-        cameraManager.rampZoom(to: CGFloat(level.factor), rate: 8.0)
+        // Within the hardware range, animate the optical ramp; above the
+        // hardware maximum (all-digital / AI zone) set directly so it actually
+        // reaches 25×–500× instead of being clamped at a hardware limit.
+        if CGFloat(level.factor) > cameraManager.maxHardwareDisplayZoom {
+            cameraManager.setZoomFactor(CGFloat(level.factor))
+        } else {
+            cameraManager.rampZoom(to: CGFloat(level.factor), rate: 8.0)
+        }
         hapticEngine.trigger(.zoomNode)
         sliderValue = level.factor
     }
@@ -197,21 +205,25 @@ struct ZoomControlView: View {
 
     private var extremeZoomRow: some View {
         ScrollView(.horizontal, showsIndicators: false) {
-            HStack(spacing: 10) {
+            HStack(spacing: 8) {
                 ForEach(ZoomLevel.extreme) { level in
-                    let isSelected = abs(appState.currentZoomFactor - level.factor) < 0.1
+                    let isSelected = abs(appState.currentZoomFactor - level.factor) < 0.5
                     Button {
                         selectZoom(level)
                     } label: {
                         Text(level.label)
-                            .font(.system(size: 13, weight: isSelected ? .bold : .medium, design: .monospaced))
-                            .foregroundColor(isSelected ? champagneGold : .white.opacity(0.7))
-                            .padding(.horizontal, 12)
-                            .padding(.vertical, 6)
+                            .font(.system(size: 13, weight: isSelected ? .bold : .semibold, design: .monospaced))
+                            .foregroundColor(isSelected ? .black : champagneGold)
+                            .frame(width: 54, height: 40)
                             .background(
-                                RoundedRectangle(cornerRadius: 14)
-                                    .fill(isSelected ? champagneGold.opacity(0.2) : Color.white.opacity(0.08))
+                                RoundedRectangle(cornerRadius: 10)
+                                    .fill(isSelected ? champagneGold : Color.black.opacity(0.4))
                             )
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 10)
+                                    .stroke(champagneGold.opacity(0.7), lineWidth: 1.1)
+                            )
+                            .contentShape(RoundedRectangle(cornerRadius: 10))
                     }
                     .buttonStyle(.plain)
                 }
