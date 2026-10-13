@@ -382,9 +382,9 @@ final class CameraManager: NSObject, ObservableObject {
             // 会立即抛 NSInvalidArgumentException（虚拟三摄/前置/某些视频配置
             // 下 supportedFlashModes 可能为空或只有 .off），真机表现为一点快门
             // 就闪退。
-            let supportedFlash = Set(output.supportedFlashModes.map { $0.intValue })
+            let supportedFlash = Set(output.supportedFlashModes)
             let wantedFlash = AppState.shared.flashMode
-            let flash: AVCaptureDevice.FlashMode = supportedFlash.contains(wantedFlash.rawValue)
+            let flash: AVCaptureDevice.FlashMode = supportedFlash.contains(wantedFlash)
                 ? wantedFlash : .off
 
             // RAW capture must use the dedicated raw initializer; `rawFileType` is

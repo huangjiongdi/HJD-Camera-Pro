@@ -20,6 +20,7 @@ import AVFoundation
 import UIKit
 import CoreImage
 import ImageIO
+import UniformTypeIdentifiers
 import SwiftUI
 
 final class PhotoCapturePipeline: NSObject, AVCapturePhotoCaptureDelegate, ObservableObject {
@@ -251,20 +252,25 @@ final class PhotoCapturePipeline: NSObject, AVCapturePhotoCaptureDelegate, Obser
             ])
 
         let colorSpace = image.colorSpace ?? CGColorSpaceCreateDeviceRGB()
-        guard let data = context.jpegRepresentation(
-            of: image,
-            colorSpace: colorSpace,
-            options: [CIImageRepresentationOption.quality: 0.92]
-        ) else { return nil }
+        // 经 CGImageDestination 输出 JPEG 并指定压缩质量（CIContext 的
+        // jpegRepresentation 不暴露 Swift 可见的 quality 键）。
+        guard let cgImage = context.createCGImage(image, from: image.extent,
+                                                  format: .RGBA8,
+                                                  colorSpace: colorSpace) else {
+            return nil
+        }
 
         let outURL = FileManager.default.temporaryDirectory
             .appendingPathComponent("processed-\(UUID().uuidString).jpg")
-        do {
-            try data.write(to: outURL, options: .atomic)
-            return outURL
-        } catch {
-            return nil
-        }
+        guard let dest = CGImageDestinationCreateWithURL(
+            outURL as CFURL,
+            UTType.jpeg.identifier as CFString,
+            1, nil
+        ) else { return nil }
+        let opts: [CFString: Any] = [kCGImageDestinationLossyCompressionQuality: 0.92]
+        CGImageDestinationAddImage(dest, cgImage, opts as CFDictionary)
+        guard CGImageDestinationFinalize(dest) else { return nil }
+        return outURL
     }
 
     // MARK: - Multi-exposure accumulation
