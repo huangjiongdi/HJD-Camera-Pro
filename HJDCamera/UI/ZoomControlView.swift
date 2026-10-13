@@ -183,13 +183,14 @@ struct ZoomControlView: View {
 
     // Non-linear zoom mapping (log-ish): unit 0..1 -> zoom 0.5..500.
     static func unitToNonLinear(_ u: Double) -> Double {
-        // log10 range from log10(0.5) to log10(500).
-        let lo = log10(0.5), hi = log10(500)
-        return pow(10, lo + (hi - lo) * u)
+        let lo = Foundation.log10(0.5 as Double)
+        let hi = Foundation.log10(500.0 as Double)
+        return Foundation.pow(10.0, lo + (hi - lo) * u)
     }
     static func nonLinearToUnit(_ z: Double) -> Double {
-        let lo = log10(0.5), hi = log10(500)
-        return (log10(min(max(z, 0.5), 500)) - lo) / (hi - lo)
+        let lo = Foundation.log10(0.5 as Double)
+        let hi = Foundation.log10(500.0 as Double)
+        return (Foundation.log10(min(max(z, 0.5), 500.0)) - lo) / (hi - lo)
     }
 
     // MARK: - Extreme Zoom
