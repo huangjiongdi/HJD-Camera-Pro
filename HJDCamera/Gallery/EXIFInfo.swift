@@ -99,7 +99,7 @@ struct EXIFInfo {
 
         var fileType: String?
         if let uti {
-            fileType = UTType(uti)?.preferredFilenameExtension?.uppercased()
+            fileType = UTType(rawValue: uti)?.preferredFilenameExtension?.uppercased()
         }
 
         return EXIFInfo(
