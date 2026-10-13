@@ -199,6 +199,8 @@ private enum Keys {
     static let saveOriginal = "settings.storage.saveOriginal"
     static let saveRAW = "settings.storage.saveRAW"
     static let saveAIProcessed = "settings.storage.saveAIProcessed"
+    // AI 开关（与实时预览相互独立；关闭后编辑器不调用超分模型，保留原片）
+    static let photoSuperResolutionEnabled = "settings.ai.photoSuperResolutionEnabled"
     static let keepBeforeAfter = "settings.storage.keepBeforeAfter"
     static let thumbnailProxy = "settings.storage.thumbnailProxy"
     static let exportToLibrary = "settings.storage.exportToLibrary"
@@ -612,6 +614,10 @@ final class AppSettingsStore: ObservableObject {
     @Published var saveAIProcessed: Bool = true {
         didSet { defaults.set(saveAIProcessed, forKey: Keys.saveAIProcessed) }
     }
+    /// 拍照后 AI 超清总开关（与实时预览独立）。关闭时编辑器不调用超分模型，直接保留原片。
+    @Published var photoSuperResolutionEnabled: Bool = true {
+        didSet { defaults.set(photoSuperResolutionEnabled, forKey: Keys.photoSuperResolutionEnabled) }
+    }
     @Published var keepBeforeAfter: Bool = false {
         didSet { defaults.set(keepBeforeAfter, forKey: Keys.keepBeforeAfter) }
     }
@@ -844,6 +850,7 @@ final class AppSettingsStore: ObservableObject {
         saveOriginal = defaults.bool(forKey: Keys.saveOriginal, fallback: true)
         saveRAW = defaults.bool(forKey: Keys.saveRAW)
         saveAIProcessed = defaults.bool(forKey: Keys.saveAIProcessed, fallback: true)
+        photoSuperResolutionEnabled = defaults.bool(forKey: Keys.photoSuperResolutionEnabled, fallback: true)
         keepBeforeAfter = defaults.bool(forKey: Keys.keepBeforeAfter)
         thumbnailProxy = defaults.bool(forKey: Keys.thumbnailProxy, fallback: true)
         exportToLibrary = defaults.bool(forKey: Keys.exportToLibrary, fallback: true)

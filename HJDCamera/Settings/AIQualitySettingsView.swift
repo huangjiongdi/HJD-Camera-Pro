@@ -14,8 +14,26 @@ struct AIQualitySettingsView: View {
 
     private let champagneGold = Color(red: 0.85, green: 0.75, blue: 0.55)
 
+    /// 实时 AI 增强开关：真实映射到 livePreviewLevel（CameraManager 实时帧据此运行）。
+    /// 与「拍照后 AI 超清」完全独立；关闭实时不影响拍照后超清，反之亦然。
+    private var realtimeOn: Binding<Bool> {
+        Binding(
+            get: { settingsStore.livePreviewLevel != .off },
+            set: { on in settingsStore.livePreviewLevel = on ? .balanced : .off }
+        )
+    }
+
     var body: some View {
         Form {
+            Section {
+                Toggle("实时 AI 增强", isOn: realtimeOn)
+                Toggle("拍照后 AI 超清", isOn: $settingsStore.photoSuperResolutionEnabled)
+            } header: {
+                Text("AI 超算总开关（相互独立）")
+            } footer: {
+                Text("实时增强仅作用于取景画面；PiperSR 实时超分模型未内嵌，实时路线仅做 Vision/YOLO 识别与轻量增强，不做逐帧超分。拍照后 AI 超清关闭时，编辑器不会调用任何超分模型，直接保留原片。")
+            }
+
             Section("实时预览") {
                 Picker("预览级别", selection: $settingsStore.livePreviewLevel) {
                     ForEach([LivePreviewLevel.off, .smooth, .balanced, .highDetail],

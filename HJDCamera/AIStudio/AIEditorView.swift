@@ -281,6 +281,14 @@ struct AIEditorView: View {
         }
     }
 
+    /// 当前拍摄倍率对应的分级输出上限提示。
+    private var zoomTierCapText: String {
+        let zoom = CGFloat(AppState.shared.currentZoomFactor)
+        let p = HJDReconstructionPolicy.profile(for: zoom)
+        let label = HJDReconstructionPolicy.zoomLabel(zoom)
+        return "当前倍率 \(label)（\(p.tier.displayName)），输出上限 \(p.maxOutputMegapixels)MP；像素上限只约束输出尺寸，不代表传感器原生细节。"
+    }
+
     private var scaleSection: some View {
         VStack(alignment: .leading, spacing: 10) {
             Label("输出规格", systemImage: "arrow.up.left.and.arrow.down.right")
@@ -296,15 +304,23 @@ struct AIEditorView: View {
             }
 
             if outputMode == .megapixel && supportsMegapixel {
+                let cap = HJDReconstructionPolicy.profile(
+                    for: CGFloat(AppState.shared.currentZoomFactor)).maxOutputMegapixels
                 HStack {
                     ForEach([48.0, 50.0, 100.0, 260.0], id: \.self) { mp in
                         let selected = targetMP == mp
+                        let allowed = Int(mp) <= cap
                         Button {
-                            targetMP = mp
+                            // 仅允许选择当前倍率档位内的输出；超限由处理前 clamp 兜底。
+                            let zoom = CGFloat(AppState.shared.currentZoomFactor)
+                            let r = HJDReconstructionPolicy.clampOutputMegapixels(
+                                requested: Int(mp), zoom: zoom)
+                            targetMP = Double(r.megapixels)
                         } label: {
                             Text("\(Int(mp))MP")
                                 .font(.system(size: 12, weight: selected ? .bold : .regular, design: .monospaced))
-                                .foregroundColor(selected ? champagneGold : .white.opacity(0.6))
+                                .foregroundColor(selected ? champagneGold
+                                                  : (allowed ? .white.opacity(0.6) : .white.opacity(0.22)))
                                 .frame(maxWidth: .infinity)
                                 .padding(.vertical, 8)
                                 .background(
@@ -314,9 +330,10 @@ struct AIEditorView: View {
                                 )
                         }
                         .buttonStyle(.plain)
+                        .disabled(!allowed)
                     }
                 }
-                Text("48MP 为真实 AI 超分；100/260MP 为 AI 超分后高质量重采样，不代表传感器原生细节。")
+                Text(zoomTierCapText)
                     .font(.system(size: 10))
                     .foregroundColor(.white.opacity(0.45))
             } else {
@@ -433,9 +450,36 @@ struct AIEditorView: View {
         outputImage = nil
 
         let useMP = outputMode == .megapixel && supportsMegapixel
-        let mp: Double? = useMP ? targetMP : nil
+        // 按当前拍摄倍率分级钳制输出像素：50×–99.9× 最高 100MP；
+        // 100×–500× 最高 50MP；低倍最高 48MP。钳制时必须说明原因。
+        var clampReason: String?
+        var mp: Double? = nil
+        if useMP {
+            let zoom = CGFloat(AppState.shared.currentZoomFactor)
+            let result = HJDReconstructionPolicy.clampOutputMegapixels(
+                requested: Int(targetMP.rounded()), zoom: zoom)
+            mp = Double(result.megapixels)
+            clampReason = result.reason
+            if result.clamped { targetMP = Double(result.megapixels) }
+        }
         let sc: Double? = useMP ? nil : outputScale
         let quality = qualityLevel
+        if let clampReason { processWarnings.append(clampReason) }
+
+        // 「拍照后 AI 超清」总开关关闭时，超分路径不调用任何模型，直接保留原片（诚实回退）。
+        let isSRRoute = useMP || taskType == .superResolution
+        if isSRRoute && !settingsStore.photoSuperResolutionEnabled {
+            outputImage = input
+            processWarnings = ["拍照后 AI 超清已关闭：未调用任何超分模型，已保留原片。"]
+            qualityAssessment = QualityAssessment(
+                sharpnessScore: 0, noiseScore: 0, exposureScore: 0,
+                motionBlurScore: 0, artifactScore: 0, overallScore: 0,
+                warnings: processWarnings, aiGeneratedAreas: 0)
+            isProcessing = false
+            progressValue = 1
+            showResult = true
+            return
+        }
 
         Task {
             let result = await GalleryAIProcessor.shared.process(

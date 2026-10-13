@@ -221,11 +221,87 @@ final class CameraManager: NSObject, ObservableObject {
         }
     }
 
-    /// Set the display zoom factor. Hardware part is clamped to the device;
-    /// any remaining factor is a preview-layer digital crop so the UI always
-    /// reaches 500× instead of being stuck at the hardware maximum.
+    // MARK: - Smooth non-linear fly-zoom (CADisplayLink driven)
+
+    /// 逐帧丝滑变焦驱动。每一帧同时插值「显示倍率 → 硬件 videoZoomFactor +
+    /// 预览数字裁切 transform + 倍率数字」，因此跨越超广角/主摄/长焦虚拟镜头
+    /// 切换点以及硬件上限（进入 50×–500× 数字裁切区）时都不会跳变，
+    /// 500×↔0.5× 全程超级丝滑。
+    private var zoomDisplayLink: CADisplayLink?
+    private var flyStartZoom: CGFloat = 1.0
+    private var flyTargetZoom: CGFloat = 1.0
+    private var flyStartTime: CFTimeInterval = 0
+    private var flyDuration: CFTimeInterval = 0.55
+
+    /// Set the display zoom factor immediately (follows the finger during a
+    /// drag). Hardware part is clamped to the device; any remaining factor is a
+    /// preview-layer digital crop so the UI always reaches 500×.
     func setZoomFactor(_ displayZoom: CGFloat) {
-        let clamped = min(max(displayZoom, 0.5), 500.0)
+        stopFlyDriver()
+        pushZoomFrame(min(max(displayZoom, 0.5), 500.0))
+    }
+
+    /// Smoothly fly to a display zoom factor. Used by zoom-button taps and
+    /// slider release so ANY change (including 500×↔0.5×) is super smooth.
+    /// `rate` is kept for source compatibility; it maps to a duration.
+    func rampZoom(to displayZoom: CGFloat, rate: CGFloat = 5.0) {
+        let duration = min(max(CGFloat(1.35 / max(rate, 0.1)), 0.28), 0.7)
+        flyZoom(to: displayZoom, duration: duration)
+    }
+
+    /// Eased, frame-by-frame fly across the FULL 0.5×–500× range.
+    func flyZoom(to displayZoom: CGFloat, duration: CGFloat = 0.55) {
+        let target = min(max(displayZoom, 0.5), 500.0)
+        DispatchQueue.main.async { [weak self] in
+            guard let self = self else { return }
+            // Cancel any hardware ramp so the display link owns every frame.
+            self.stopHardwareRamp()
+            self.flyStartZoom = self.currentZoomFactor
+            self.flyTargetZoom = target
+            self.flyDuration = CFTimeInterval(max(0.08, duration))
+            self.flyStartTime = CACurrentMediaTime()
+            if self.zoomDisplayLink == nil {
+                let link = CADisplayLink(target: self, selector: #selector(self.flyTick(_:)))
+                link.add(to: .main, forMode: .common)
+                self.zoomDisplayLink = link
+            }
+        }
+    }
+
+    @objc private func flyTick(_ link: CADisplayLink) {
+        let elapsed = link.timestamp - flyStartTime
+        var t = flyDuration > 0 ? CGFloat(elapsed / flyDuration) : 1.0
+        t = min(max(t, 0), 1)
+        // easeInOutCubic：起步/收尾轻柔，中间连贯，保证“超级丝滑”。
+        let e = t < 0.5 ? 4 * t * t * t : 1 - pow(-2 * t + 2, 3) / 2
+        let z = flyStartZoom + (flyTargetZoom - flyStartZoom) * e
+        pushZoomFrame(z)
+        if t >= 1.0 {
+            pushZoomFrame(flyTargetZoom)
+            stopFlyDriver()
+        }
+    }
+
+    private func stopFlyDriver() {
+        let invalidate = { [weak self] in
+            self?.zoomDisplayLink?.invalidate()
+            self?.zoomDisplayLink = nil
+        }
+        Thread.isMainThread ? invalidate() : DispatchQueue.main.async(execute: invalidate)
+    }
+
+    private func stopHardwareRamp() {
+        sessionQueue.async { [weak self] in
+            guard let self = self, let device = self.currentDevice else { return }
+            if device.isRampingVideoZoom { device.cancelVideoZoomRamp() }
+        }
+    }
+
+    /// Apply a single display-zoom frame: hardware factor + preview digital crop
+    /// + published state. Safe to call every frame (per-frame videoZoomFactor
+    /// is Apple's documented custom-zoom technique and crosses virtual lens
+    /// switch-over points smoothly).
+    private func pushZoomFrame(_ clamped: CGFloat) {
         sessionQueue.async { [weak self] in
             guard let self = self, let device = self.currentDevice else { return }
             let hw = self.hardwareZoomFactor(forDisplayZoom: clamped)
@@ -237,34 +313,7 @@ final class CameraManager: NSObject, ObservableObject {
             } catch {
                 self.health.recordStartupFailure(error)
             }
-            self.currentDigitalCrop = crop
-            self.applyDigitalCrop(crop)
-            DispatchQueue.main.async {
-                self.currentZoomFactor = clamped
-                let src = self.zoomSource(forDisplayZoom: clamped)
-                self.zoomSource = src
-                self.publishLensState(clamped)
-                AppState.shared.setZoom(Double(clamped), source: src)
-            }
-        }
-    }
-
-    /// Smoothly ramp to a display zoom factor (used by animated UI transitions).
-    /// Hardware zoom is ramped only within the hardware range; the all-digital
-    /// zone (>hardware max) is applied directly since ramping cannot exceed it.
-    func rampZoom(to displayZoom: CGFloat, rate: CGFloat = 5.0) {
-        let clamped = min(max(displayZoom, 0.5), 500.0)
-        sessionQueue.async { [weak self] in
-            guard let self = self, let device = self.currentDevice else { return }
-            let hw = self.hardwareZoomFactor(forDisplayZoom: clamped)
-            let crop = self.digitalCropFactor(forDisplayZoom: clamped)
-            do {
-                try device.lockForConfiguration()
-                device.ramp(toVideoZoomFactor: hw, withRate: Float(rate))
-                device.unlockForConfiguration()
-            } catch {
-                self.health.recordStartupFailure(error)
-            }
+            // 成片裁切与所见帧严格一致：每帧同步当前数字裁切倍率。
             self.currentDigitalCrop = crop
             self.applyDigitalCrop(crop)
             DispatchQueue.main.async {
