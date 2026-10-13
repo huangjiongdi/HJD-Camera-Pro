@@ -176,14 +176,20 @@ final class PhotoCapturePipeline: NSObject, AVCapturePhotoCaptureDelegate, Obser
         let keepOriginal = AppSettingsStore.shared.keepOriginal
         let fallbackOnFailure = AppSettingsStore.shared.fallbackOnFailure
         let digitalCrop = CameraManager.shared.currentDigitalCrop
+        let lutName = LUTManager.shared.activeLUTName
+        let lutIntensity = LUTManager.shared.intensity
+        let sharpness = AppState.shared.proSettings.sharpness
         ShutterTrace.mark(tap, "开始后台保存",
-                          extra: "保留原图=\(keepOriginal) 数字裁切=\(String(format: "%.3f", Double(digitalCrop)))")
+                          extra: "保留原图=\(keepOriginal) 数字裁切=\(String(format: "%.3f", Double(digitalCrop))) LUT=\(lutName)")
 
         processCapture(originalData: originalData,
                        originalURL: originalURL,
                        keepOriginal: keepOriginal,
                        fallbackOnFailure: fallbackOnFailure,
                        digitalCrop: digitalCrop,
+                       lutName: lutName,
+                       lutIntensity: lutIntensity,
+                       sharpness: sharpness,
                        tap: tap)
     }
 
@@ -219,6 +225,9 @@ final class PhotoCapturePipeline: NSObject, AVCapturePhotoCaptureDelegate, Obser
                                 keepOriginal: Bool,
                                 fallbackOnFailure: Bool,
                                 digitalCrop: CGFloat,
+                                lutName: String,
+                                lutIntensity: Double,
+                                sharpness: Double,
                                 tap: Int) {
         Task.detached(priority: .userInitiated) {
             // 1) 原图优先入库——绝不丢片、始终保留原图。
@@ -233,11 +242,14 @@ final class PhotoCapturePipeline: NSObject, AVCapturePhotoCaptureDelegate, Obser
                 }
             }
 
-            // 2) 渲染"所见即所得"成片（高倍数字裁切 + 轻量增强）。
+            // 2) 渲染"所见即所得"成片（高倍数字裁切 + 轻量增强 + 选中的 LUT）。
             ShutterTrace.mark(tap, "开始渲染所见即所得成片")
             let enhancedURL = autoreleasepool {
                 Self.renderEnhanced(originalURL: originalURL,
                                     digitalCrop: digitalCrop,
+                                    lutName: lutName,
+                                    lutIntensity: lutIntensity,
+                                    sharpness: sharpness,
                                     context: self.ciContext)
             }
             ShutterTrace.mark(tap, enhancedURL == nil ? "成片渲染失败（将回退原图）" : "成片渲染完成")
@@ -285,6 +297,9 @@ final class PhotoCapturePipeline: NSObject, AVCapturePhotoCaptureDelegate, Obser
     /// 锐化与对比增强。任何失败返回 nil，由调用方回退原图。
     private static func renderEnhanced(originalURL: URL,
                                        digitalCrop: CGFloat,
+                                       lutName: String,
+                                       lutIntensity: Double,
+                                       sharpness: Double,
                                        context: CIContext) -> URL? {
         guard let source = CIImage(contentsOf: originalURL) else { return nil }
         var image = source
@@ -311,16 +326,27 @@ final class PhotoCapturePipeline: NSObject, AVCapturePhotoCaptureDelegate, Obser
             image = scaled
         }
 
-        // 轻量、确定性的增强（非 AI 超分）。
-        image = image
-            .applyingFilter("CIUnsharpMask", parameters: [
+        // 轻量、确定性的增强（非 AI 超分）。锐化强度由 Pro 面板的"锐化"控制。
+        let sharpenIntensity = max(0.0, min(1.0, sharpness)) * 0.9
+        if sharpenIntensity > 0.02 {
+            image = image.applyingFilter("CIUnsharpMask", parameters: [
                 kCIInputRadiusKey: 1.2,
-                kCIInputIntensityKey: 0.5
+                kCIInputIntensityKey: sharpenIntensity
             ])
+        }
+        image = image
             .applyingFilter("CIColorControls", parameters: [
                 kCIInputContrastKey: 1.03,
                 kCIInputSaturationKey: 1.02
             ])
+
+        // 真实 LUT（徕卡/胶片/电影等，HALD 64³ 或 .cube）。任何失败都回退原片。
+        if lutName != "None", lutIntensity > 0 {
+            let extent = image.extent
+            let lutResult = LUTApplier.shared.applyLUT(
+                named: lutName, to: image, intensity: lutIntensity)
+            image = lutResult.cropped(to: extent)
+        }
 
         let colorSpace = image.colorSpace ?? CGColorSpaceCreateDeviceRGB()
         // 经 CGImageDestination 输出 JPEG 并指定压缩质量（CIContext 的

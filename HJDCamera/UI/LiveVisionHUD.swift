@@ -24,25 +24,9 @@ struct LiveVisionHUD: View {
             }
             .ignoresSafeArea()
 
-            // 顶部信息胶囊（场景 + 实际镜头）：不忽略安全区，
-            // 永远落在灵动岛下方，不再被遮挡。
-            if appState.aiPreviewLevel != .off {
-                VStack {
-                    HStack(spacing: 8) {
-                        chip(systemName: "eye.fill",
-                             text: appState.liveSceneLabel.isEmpty ? "实时识别中" : appState.liveSceneLabel,
-                             darkText: true, fill: champagneGold)
-                        Spacer()
-                        chip(systemName: "camera.aperture",
-                             text: "\(cameraManager.activeLensLabel) · \(cameraManager.activeFocalText)",
-                             darkText: false, fill: Color.black.opacity(0.55))
-                    }
-                    .padding(.horizontal, 14)
-                    .padding(.top, 10)
-                    .allowsHitTesting(false)
-                    Spacer()
-                }
-            }
+            // 顶部信息胶囊已移到 LiveVisionChipsBar（放进 CameraRootView
+            // 的安全区 VStack，与 TopStatusBar 同一列，不再与闪光/RAW 按钮
+            // 重叠、不被灵动岛遮挡）。
         }
         .allowsHitTesting(false)
     }

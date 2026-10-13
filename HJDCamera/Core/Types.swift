@@ -150,6 +150,16 @@ enum ExposureMode: String, CaseIterable, Hashable {
     case manual = "M"
 }
 
+/// 极影式 Pro 轮盘可调参数。
+enum ProWheelParam: String, CaseIterable, Identifiable {
+    case focus = "对焦"
+    case iso = "ISO"
+    case shutter = "快门"
+    case ev = "EV"
+    case wb = "白平衡"
+    var id: String { rawValue }
+}
+
 struct ProCaptureSettings {
     var iso: Double
     var shutterSpeed: Double

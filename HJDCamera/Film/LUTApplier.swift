@@ -32,7 +32,35 @@ class LUTApplier: ObservableObject {
     func applyLUT(named name: String, to image: CIImage, intensity: Double) -> CIImage {
         guard name != "None", intensity > 0 else { return image }
 
-        // Try to load custom .cube LUT first
+        // 1) 真实 LUT 目录（极影 HALD / 弓雨公 cube / 自定义导入）。
+        if let info = LUTManager.shared.info(named: name) {
+            switch info.kind {
+            case .hald:
+                if let cube = HaldCubeLoader.cubeData(resourceName: info.resource) {
+                    let dimension = 64
+                    let baked = HaldCubeLoader.bakeIntensity(
+                        cube, dimension: dimension, intensity: Float(min(max(intensity, 0), 1)))
+                    return applyColorCube(image: image,
+                                          dimension: dimension,
+                                          cubeData: baked,
+                                          intensity: 1.0)
+                }
+            case .cube:
+                if let url = info.fileURL
+                    ?? Bundle.main.url(forResource: info.resource, withExtension: nil,
+                                       subdirectory: "LUT")
+                    ?? Bundle.main.url(forResource: name, withExtension: "cube"),
+                   let (dimension, cubeData) = parseCube(at: url) {
+                    return applyColorCube(image: image,
+                                          dimension: dimension,
+                                          cubeData: cubeData,
+                                          intensity: intensity)
+                }
+            }
+            return image
+        }
+
+        // 2) 兼容旧名字：直接按 .cube 查找。
         if let url = Bundle.main.url(forResource: name, withExtension: "cube"),
            let (dimension, cubeData) = parseCube(at: url) {
             return applyColorCube(image: image,
@@ -41,7 +69,7 @@ class LUTApplier: ObservableObject {
                                   intensity: intensity)
         }
 
-        // Fallback: built-in color transform
+        // 3) 兜底：内置通用调色。
         return applyBuiltinTransform(image: image, name: name, intensity: intensity)
     }
 

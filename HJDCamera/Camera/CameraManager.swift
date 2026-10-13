@@ -441,18 +441,17 @@ final class CameraManager: NSObject, ObservableObject {
 
     // MARK: - Recording
 
+    /// 录制前是否把 session 切到了 .inputPriority（恢复照片预设时用）。
+    private var videoPresetOverridden = false
+
     func startRecording() {
         guard movieOutput.isRecording == false else { return }
         sessionQueue.async { [weak self] in
             guard let self = self else { return }
-            // The session already runs on a video-capable `.high` preset; do NOT
-            // reconfigure it here. Switching presets while a movie output is
-            // attached (and restoring `.photo` on stop) was the crash.
             guard let connection = self.movieOutput.connection(with: .video) else { return }
+            // 真实应用设置里的分辨率/帧率/编码/HDR/Log/防抖（失败只回退、不崩）。
+            self.applyVideoSettings(connection: connection)
             connection.videoRotationAngle = OrientationObserver.shared.videoRotationAngle
-            if connection.isVideoStabilizationSupported {
-                connection.preferredVideoStabilizationMode = .auto
-            }
             let url = FileManager.default.temporaryDirectory
                 .appendingPathComponent(UUID().uuidString)
                 .appendingPathExtension("mov")
@@ -469,10 +468,181 @@ final class CameraManager: NSObject, ObservableObject {
         }
     }
 
-    /// No longer reconfigures the preset: the session stays on `.high` for the
-    /// whole app lifetime so both photo and movie outputs coexist.
-    func restorePhotoPreset() {
-        // Intentionally empty — kept for call-site compatibility.
+    // MARK: - 录制参数真实应用（参考 Varlens：ProRes / HDR / 防抖 / 码率）
+
+    private func applyVideoSettings(connection: AVCaptureConnection) {
+        let s = AppSettingsStore.shared
+        guard let device = currentDevice else {
+            DiagnosticLogger.shared.log("录制参数：无设备，跳过", category: .camera)
+            return
+        }
+
+        let wantsProRes = s.videoCodec != .h264 && s.videoCodec != .hevc
+        let wantsLog = s.videoColorSpace == .log
+        let wantsHDR = s.videoHDR && !wantsLog
+        let targetFPS = s.videoFrameRate
+
+        // 1) 选择 activeFormat（必须在 .inputPriority 下才能手选格式）。
+        let targetWidth = Self.targetWidth(for: s.videoResolution)
+        let picked: AVCaptureDevice.Format? = device.formats
+            .filter { fmt in
+                let dims = CMVideoFormatDescriptionGetDimensions(fmt.formatDescription)
+                return Int(dims.width) == targetWidth
+            }
+            .sorted { a, b in
+                let aMax = a.videoSupportedFrameRateRanges.map { $0.maxFrameRate }.max() ?? 0
+                let bMax = b.videoSupportedFrameRateRanges.map { $0.maxFrameRate }.max() ?? 0
+                return aMax > bMax
+            }
+            .first { fmt in
+                let fpsOK = fmt.videoSupportedFrameRateRanges.contains { $0.maxFrameRate >= Double(targetFPS) }
+                let hdrOK = !wantsHDR || fmt.isVideoHDRSupported
+                let logOK = !wantsLog || Self.formatSupportsAppleLog(fmt)
+                return fpsOK && hdrOK && logOK
+            }
+
+        if let fmt = picked {
+            session.beginConfiguration()
+            session.sessionPreset = .inputPriority
+            do {
+                try device.lockForConfiguration()
+                device.activeFormat = fmt
+                let duration = CMTime(value: 1, timescale: CMTimeScale(targetFPS))
+                device.activeVideoMinFrameDuration = duration
+                device.activeVideoMaxFrameDuration = duration
+                if #available(iOS 17.1, *) {
+                    if wantsLog && Self.formatSupportsAppleLog(fmt) {
+                        device.activeColorSpace = .appleLog
+                        device.isGlobalToneMappingEnabled = false
+                    } else if s.videoColorSpace == .p3 {
+                        device.activeColorSpace = .P3_D65
+                    } else if wantsHDR && fmt.isVideoHDRSupported {
+                        // HLG 由输出设置协商；全局色调映射关闭以保留 HDR 高光。
+                        device.isGlobalToneMappingEnabled = false
+                    }
+                } else if wantsHDR && fmt.isVideoHDRSupported {
+                    device.isGlobalToneMappingEnabled = false
+                }
+                device.unlockForConfiguration()
+            } catch {
+                DiagnosticLogger.shared.log("录制格式设置失败: \(error.localizedDescription)", category: .camera)
+            }
+            session.commitConfiguration()
+            videoPresetOverridden = true
+            DiagnosticLogger.shared.log(
+                "录制格式: \(s.videoResolution)/\(targetFPS) HDR=\(wantsHDR) LOG=\(wantsLog) ProRes=\(wantsProRes)",
+                category: .camera)
+        } else {
+            DiagnosticLogger.shared.log(
+                "录制格式不匹配，沿用 .high 默认: \(s.videoResolution)/\(targetFPS)",
+                category: .camera)
+        }
+
+        // 2) 编码 + 色彩（setOutputSettings 必须在未录制时调用）。
+        var outputSettings: [String: Any] = [:]
+        var resolvedCodec: AVVideoCodecType = s.videoCodec == .h264 ? .h264 : .hevc
+        let available = movieOutput.availableVideoCodecTypes
+        if wantsProRes {
+            let wanted: AVVideoCodecType
+            switch s.videoCodec {
+            case .proRes422: wanted = .proRes422
+            case .proRes422HQ: wanted = .proRes422HQ
+            case .proRes422LT: wanted = .proRes422LT
+            case .proResProxy: wanted = .proRes422Proxy
+            default: wanted = .proRes422
+            }
+            if available.contains(wanted) {
+                resolvedCodec = wanted
+            } else if let proRes = available.first(where: { $0.rawValue.contains("ProRes") }) {
+                // 内部存储 ProRes 通常只支持 1080p30：自动选可用的 ProRes 变体。
+                resolvedCodec = proRes
+                DiagnosticLogger.shared.log("ProRes 回退到 \(proRes.rawValue)", category: .camera)
+            } else {
+                resolvedCodec = .hevc
+                DiagnosticLogger.shared.log("ProRes 不可用，回退 HEVC", category: .camera)
+            }
+        } else {
+            let wanted: AVVideoCodecType = s.videoCodec == .h264 ? .h264 : .hevc
+            if available.contains(wanted) { resolvedCodec = wanted }
+        }
+        outputSettings[AVVideoCodecKey] = resolvedCodec
+
+        // HLG HDR：仅 HEVC 且当前格式支持时协商。
+        if wantsHDR, resolvedCodec == .hevc,
+           device.activeFormat.isVideoHDRSupported {
+            outputSettings[AVVideoColorPropertiesKey] = [
+                AVVideoColorPrimariesKey: AVVideoColorPrimaries_ITU_R_2020,
+                AVVideoYCbCrMatrixKey: AVVideoYCbCrMatrix_ITU_R_2020,
+                AVVideoTransferFunctionKey: AVVideoTransferFunction_ITU_R_2100_HLG
+            ]
+        }
+        movieOutput.setOutputSettings(outputSettings, for: connection)
+
+        // 3) 防抖（按设置；不支持的档位自动降级）。
+        if connection.isVideoStabilizationSupported {
+            switch s.videoStabilization {
+            case .off:
+                connection.preferredVideoStabilizationMode = .off
+            case .standard:
+                connection.preferredVideoStabilizationMode = .standard
+            case .cinematic:
+                connection.preferredVideoStabilizationMode =
+                    connection.isVideoStabilizationModeSupported(.cinematic) ? .cinematic : .standard
+            case .cinematicExtended:
+                connection.preferredVideoStabilizationMode =
+                    connection.isVideoStabilizationModeSupported(.cinematicExtended)
+                    ? .cinematicExtended
+                    : (connection.isVideoStabilizationModeSupported(.cinematic) ? .cinematic : .standard)
+            }
+        }
+    }
+
+    /// 录制结束后恢复照片用默认配置（.high，全局色调映射打开）。
+    private func restoreVideoDefaults() {
+        guard videoPresetOverridden else { return }
+        if let connection = movieOutput.connection(with: .video) {
+            movieOutput.setOutputSettings([:], for: connection)
+        }
+        session.beginConfiguration()
+        session.sessionPreset = .high
+        if let device = currentDevice {
+            do {
+                try device.lockForConfiguration()
+                device.activeVideoMinFrameDuration = .invalid
+                device.activeVideoMaxFrameDuration = .invalid
+                if #available(iOS 17.1, *) {
+                    device.isGlobalToneMappingEnabled = true
+                }
+                device.unlockForConfiguration()
+            } catch { }
+        }
+        session.commitConfiguration()
+        videoPresetOverridden = false
+    }
+
+    private static func targetWidth(for resolution: String) -> Int {
+        switch resolution {
+        case "8K": return 7680
+        case "4K": return 3840
+        case "1080p": return 1920
+        case "720p": return 1280
+        case "480p": return 640
+        default: return 3840
+        }
+    }
+
+    private static func formatSupportsAppleLog(_ fmt: AVCaptureDevice.Format) -> Bool {
+        if #available(iOS 17.1, *) {
+            return fmt.supportedColorSpaces.contains(.appleLog)
+        }
+        return false
+    }
+
+    /// 录制结束后在 sessionQueue 上恢复照片默认配置。
+    func restoreVideoDefaultsAfterRecording() {
+        sessionQueue.async { [weak self] in
+            self?.restoreVideoDefaults()
+        }
     }
 
     // MARK: - Orientation

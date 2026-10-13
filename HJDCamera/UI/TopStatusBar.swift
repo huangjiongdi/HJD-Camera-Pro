@@ -113,12 +113,15 @@ struct TopStatusBar: View {
     }
 
     private var gridButton: some View {
+        // 取景网格线统一以 settingsStore.gridEnabled 为准（AssistiveOverlays /
+        // CameraPreviewContainer 读的就是它）；旧版切 appState.gridEnabled，
+        // 导致九宫格点了没反应。
         Button {
-            appState.gridEnabled.toggle()
+            settingsStore.gridEnabled.toggle()
         } label: {
-            Image(systemName: appState.gridEnabled ? "grid" : "grid.circle")
+            Image(systemName: settingsStore.gridEnabled ? "grid" : "grid.circle")
                 .font(.system(size: 16, weight: .medium))
-                .foregroundColor(appState.gridEnabled ? champagneGold : .white.opacity(0.85))
+                .foregroundColor(settingsStore.gridEnabled ? champagneGold : .white.opacity(0.85))
                 .frame(width: 38, height: 38)
                 .background(Circle().fill(Color.black.opacity(0.35)))
         }

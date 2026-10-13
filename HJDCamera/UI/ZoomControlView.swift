@@ -23,8 +23,8 @@ struct ZoomControlView: View {
 
     @State private var showFineSlider = false
 
-    /// 顶部固定倍率（注意：没有 2×）。
-    private let mainStops: [CGFloat] = [0.5, 1, 5, 10]
+    /// 顶部固定倍率：16 Pro Max 四颗镜头（0.5 超广角 / 1 主摄 / 2 48mm / 5 长焦）。
+    private let mainStops: [CGFloat] = [0.5, 1, 2, 5]
     /// 倒三角展开的更多倍率（无 25，含 20、300）。
     private let moreStops: [CGFloat] = [20, 50, 100, 200, 300, 400, 500]
 
@@ -145,117 +145,64 @@ struct ZoomControlView: View {
     }
 }
 
-// MARK: - 直变焦条（0.5×——500×，线性、每格步进 1×）
+// MARK: - 极影式变焦轮盘（0.5×–500×，对数刻度、连续跟手、松手吸附）
 
 private struct FineZoomRuler: View {
     @EnvironmentObject private var cameraManager: CameraManager
     @EnvironmentObject private var hapticEngine: HapticEngine
-    @State private var lastIntZoom: Int = 1
 
+    private let stops: [Double] = [0.5, 1, 2, 3, 5, 10, 20, 50, 100, 200, 500]
     private let champagneGold = Color(red: 0.85, green: 0.75, blue: 0.55)
 
-    var body: some View {
-        VStack(spacing: 6) {
-            HStack {
-                Text("精细滑动变焦")
-                    .font(.system(size: 11, weight: .medium))
-                Spacer()
-                Text(currentZoomLabel)
-                    .font(.system(size: 13, weight: .bold, design: .rounded))
-                    .monospacedDigit()
-            }
-            .foregroundColor(.white.opacity(0.85))
-
-            GeometryReader { geo in
-                let w = geo.size.width
-                ZStack(alignment: .leading) {
-                    // 直轨道
-                    Capsule().fill(Color.black.opacity(0.45)).frame(height: 6)
-                    // 已选部分
-                    Capsule().fill(champagneGold.opacity(0.85))
-                        .frame(width: max(6, w * thumbFraction), height: 6)
-                    // 端点刻度
-                    tickLabels(width: w)
-                    // 滑块
-                    Circle()
-                        .fill(champagneGold)
-                        .frame(width: 22, height: 22)
-                        .overlay(Circle().stroke(.white.opacity(0.8), lineWidth: 1.5))
-                        .offset(x: w * thumbFraction - 11)
-                        .shadow(color: .black.opacity(0.4), radius: 3, y: 1)
-                }
-                .contentShape(Rectangle())
-                .gesture(
-                    DragGesture(minimumDistance: 0)
-                        .onChanged { value in
-                            let v = zoomValue(atX: value.location.x, width: w)
-                            cameraManager.setZoomFactor(v)
-                            emitHaptic(for: v)
-                        }
-                        .onEnded { value in
-                            let v = zoomValue(atX: value.location.x, width: w)
-                            // 松手吸附到整数，短距离平滑收口
-                            cameraManager.flyZoom(to: v, duration: 0.16)
-                        }
-                )
-            }
-            .frame(height: 30)
-
-            // 端点标注
-            HStack {
-                Text("0.5×").font(.system(size: 9))
-                Spacer()
-                Text("100×").font(.system(size: 9))
-                Spacer()
-                Text("250×").font(.system(size: 9))
-                Spacer()
-                Text("500×").font(.system(size: 9))
-            }
-            .foregroundColor(.white.opacity(0.6))
-        }
-        .padding(10)
-        .background(Color.black.opacity(0.35), in: RoundedRectangle(cornerRadius: 14))
-    }
-
-    // MARK: - 映射（线性，每格 1×）
-
-    private var currentDisplay: CGFloat {
-        min(max(cameraManager.currentZoomFactor, 0.5), 500)
-    }
-
-    private var thumbFraction: CGFloat {
-        (currentDisplay - 0.5) / (500 - 0.5)
-    }
-
-    private func zoomValue(atX x: CGFloat, width w: CGFloat) -> CGFloat {
-        let f = min(max(x / w, 0), 1)
-        let raw = 0.5 + f * (500 - 0.5)
-        // 起点保留 0.5；其余吸附到整数（每格 1×）
-        if raw < 0.75 { return 0.5 }
-        return CGFloat(Int(raw.rounded()))
+    private var zoomValue: Binding<Double> {
+        Binding(
+            get: { Double(min(max(cameraManager.currentZoomFactor, 0.5), 500)) },
+            set: { _ in }
+        )
     }
 
     private var currentZoomLabel: String {
-        currentDisplay < 1 ? "0.5×" : "\(Int(currentDisplay.rounded()))×"
+        let v = cameraManager.currentZoomFactor
+        if v < 0.97 { return "0.5×" }
+        if abs(v - v.rounded()) < 0.08 { return "\(Int(v.rounded()))×" }
+        return String(format: "%.1f×", v)
     }
 
-    private func emitHaptic(for v: CGFloat) {
-        let intV = v < 1 ? 0 : Int(v)
-        if intV != lastIntZoom {
-            lastIntZoom = intV
-            hapticEngine.selectionChanged()
-        }
-    }
+    var body: some View {
+        VStack(spacing: 4) {
+            HStack {
+                Text("轮盘变焦 · 对数刻度")
+                    .font(.system(size: 11, weight: .medium))
+                Spacer()
+                Text(currentZoomLabel)
+                    .font(.system(size: 14, weight: .bold, design: .rounded))
+                    .monospacedDigit()
+                    .foregroundColor(champagneGold)
+            }
+            .foregroundColor(.white.opacity(0.85))
 
-    @ViewBuilder
-    private func tickLabels(width w: CGFloat) -> some View {
-        // 中央端点的竖线刻度（装饰性，帮助直条判读）
-        ForEach([CGFloat(100), CGFloat(250)], id: \.self) { mark in
-            Rectangle()
-                .fill(.white.opacity(0.5))
-                .frame(width: 1.5, height: 12)
-                .offset(x: w * ((mark - 0.5) / (500 - 0.5)) - 0.75, y: 0)
+            LogWheelView(
+                value: zoomValue,
+                range: 0.5...500,
+                stops: stops,
+                label: { v in
+                    if v < 1 { return "0.5" }
+                    return "\(Int(v))"
+                },
+                onChange: { v in
+                    // 拖动连续逐帧下发，不再吸附整数。
+                    cameraManager.setZoomFactor(CGFloat(v))
+                },
+                onCommit: { v in
+                    cameraManager.flyZoom(to: CGFloat(v), duration: 0.18)
+                },
+                logarithmic: true,
+                haptic: { hapticEngine.selectionChanged() }
+            )
         }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 10)
+        .background(Color.black.opacity(0.35), in: RoundedRectangle(cornerRadius: 14))
     }
 }
 

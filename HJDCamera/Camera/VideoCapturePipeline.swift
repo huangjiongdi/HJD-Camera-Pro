@@ -128,11 +128,29 @@ final class VideoCapturePipeline: NSObject, AVCaptureFileOutputRecordingDelegate
                     error: Error?) {
         finishRecording()
 
+        // 录制期间切到 .inputPriority / 自定义编码，结束后恢复照片默认配置。
+        CameraManager.shared.restoreVideoDefaultsAfterRecording()
+
+        // Even when an error is reported (e.g. a short take), AVFoundation may
+        // have written a valid partial file. Validate it once and keep it if it
+        // is usable, instead of tearing down the whole session.
         if let error = error {
-            recover(from: error, fileURL: outputFileURL)
+            DiagnosticLogger.shared.error("Recording ended with error: \(error.localizedDescription)")
+            if isUsableFile(at: outputFileURL) {
+                verifyIntegrity(of: outputFileURL)
+            } else {
+                try? FileManager.default.removeItem(at: outputFileURL)
+                NotificationCenter.default.post(name: .hjdStorageWarning, object: error)
+            }
             return
         }
         verifyIntegrity(of: outputFileURL)
+    }
+
+    private func isUsableFile(at url: URL) -> Bool {
+        guard let attrs = try? FileManager.default.attributesOfItem(atPath: url.path),
+              let size = attrs[.size] as? Int64 else { return false }
+        return size > 10_000
     }
 
     // MARK: - Integrity & recovery
@@ -151,17 +169,6 @@ final class VideoCapturePipeline: NSObject, AVCaptureFileOutputRecordingDelegate
         Task.detached {
             _ = await PhotoLibraryExporter.shared.exportVideo(fileURL: url)
         }
-    }
-
-    private func recover(from error: Error, fileURL: URL) {
-        // Try to keep whatever data was captured, then free the session.
-        if FileManager.default.fileExists(atPath: fileURL.path) {
-            verifyIntegrity(of: fileURL)
-        }
-        // Restart the session cleanly so the next take is usable.
-        CameraManager.shared.stopSession()
-        CameraManager.shared.startSession()
-        NotificationCenter.default.post(name: .hjdStorageWarning, object: error)
     }
 
     // MARK: - HUD refresh

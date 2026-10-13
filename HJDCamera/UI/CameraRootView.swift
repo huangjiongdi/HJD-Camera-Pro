@@ -49,12 +49,26 @@ struct CameraRootView: View {
                         .environmentObject(settingsStore)
                         .padding(.top, 6)
 
+                    // 实时识别/镜头信息胶囊：独立一行，不再与闪光/RAW 重叠。
+                    LiveVisionChipsBar()
+                        .environmentObject(appState)
+                        .environmentObject(cameraManager)
+
                     // 上次拍照闪退的原因横幅（安全区内、灵动岛下方）。
                     if !crashDismissed, let crash = crashBanner {
                         crashBannerView(crash)
                     }
 
                     Spacer(minLength: 12)
+
+                    // 极影式 Pro 轮盘（仅 Pro 模式）：P/S/A/M + 对焦/ISO/快门/EV/WB。
+                    if appState.currentMode == .pro {
+                        ProModeDock()
+                            .environmentObject(appState)
+                            .environmentObject(hapticEngine)
+                            .padding(.horizontal, 10)
+                            .padding(.bottom, 8)
+                    }
 
                     // Zoom control
                     ZoomControlView()
@@ -93,9 +107,18 @@ struct CameraRootView: View {
         // 灵动岛与 Home 指示条；全屏元素各自忽略安全区。
         .gesture(
             DragGesture()
-                .onChanged { value in
-                    if value.translation.height < -30 {
-                        appState.showProControls = true
+                .onEnded { value in
+                    // 上滑打开 Pro 面板；面板打开时下滑收回。
+                    if value.translation.height < -40 {
+                        withAnimation(.easeOut(duration: 0.2)) {
+                            appState.showProControls = true
+                        }
+                        hapticEngine.trigger(.focus, type: .light)
+                    } else if value.translation.height > 60 && appState.showProControls {
+                        withAnimation(.easeOut(duration: 0.2)) {
+                            appState.showProControls = false
+                        }
+                        hapticEngine.trigger(.focus, type: .light)
                     }
                 }
         )
@@ -103,6 +126,18 @@ struct CameraRootView: View {
             // 拍照成功后 ShutterTrace 会清空；回到相机界面时同步刷新。
             crashBanner = ShutterTrace.lastCrashReport
             if crashBanner == nil { crashDismissed = true }
+        }
+        .onChange(of: appState.currentMode) { _, mode in
+            // 离开 Pro 模式：所有手动参数恢复自动，避免影响其它模式。
+            if mode != .pro && appState.exposureMode != .auto {
+                appState.exposureMode = .auto
+                appState.proSettings.iso = 100
+                appState.proSettings.shutterSpeed = 1.0 / 125
+                appState.proSettings.evCompensation = 0
+                appState.proSettings.whiteBalance = 0
+                appState.proSettings.manualFocusDistance = -1
+                ProManualEngine.reset()
+            }
         }
     }
 

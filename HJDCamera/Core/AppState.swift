@@ -24,6 +24,12 @@ final class AppState: ObservableObject {
     @Published var flashMode: AVCaptureDevice.FlashMode = .auto
     @Published var timerDuration: Int = 0
     @Published var gridEnabled = false
+    /// Pro 曝光档位（P/S/A/M），驱动真实设备行为。
+    @Published var exposureMode: ExposureMode = .auto
+    /// Pro 轮盘当前选中的参数。
+    @Published var proWheelParam: ProWheelParam = .iso
+    /// 选中的 LUT 强度快捷访问（LUTManager 为准，这里仅做 UI 镜像）。
+    @Published var lutIntensity: Double = 0.75
     @Published var levelEnabled = false
     @Published var rawEnabled = false
     @Published var aiPreviewLevel: LivePreviewLevel = .balanced
