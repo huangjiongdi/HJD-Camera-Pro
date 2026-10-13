@@ -62,6 +62,14 @@ final class DiagnosticLogger: ObservableObject {
         return base.appendingPathComponent("hjd_diag.log")
     }
 
+    /// 供崩溃处理器等需要直接访问日志路径的场景使用。
+    var fileURL: URL { logFileURL }
+
+    /// 同步落盘日志的最大字节数（超过则裁掉旧内容，保留最近的日志）。
+    private let maxLogBytes = 2_000_000
+    private let traceLock = NSLock()
+    private var traceCount = 0
+
     private let queue = DispatchQueue(label: "com.hjdcamera.diagnosticLogger", qos: .utility)
 
     private init() {
@@ -93,6 +101,74 @@ final class DiagnosticLogger: ObservableObject {
 
     func error(_ message: String) {
         log(message, category: .error)
+    }
+
+    /// 同步、立即落盘的关键链路埋点（快门拍照用）。普通 log() 走异步队列，
+    /// App 闪退时最后几条会丢；这里在当前线程直接写文件，保证闪退前最后一条
+    /// 日志一定在磁盘上。也会同步进 recentEntries。
+    func trace(_ message: String) {
+        let entry = LogEntry(date: Date(), category: .camera, message: message)
+        traceLock.lock()
+        defer { traceLock.unlock() }
+        traceCount += 1
+        if traceCount % 50 == 0 {
+            trimLogIfNeededLocked()
+        }
+        appendToDiskLocked(entry)
+        let entryCopy = entry
+        DispatchQueue.main.async { [weak self] in
+            self?.recentEntries.insert(entryCopy, at: 0)
+            if let n = self?.recentEntries.count, n > (self?.maxRecentEntries ?? 200) {
+                self?.recentEntries.removeLast(n - (self?.maxRecentEntries ?? 200))
+            }
+        }
+    }
+
+    /// 崩溃处理器专用：立即同步落盘并 fsync，不做任何可能抛异常的额外操作。
+    func traceCrash(_ message: String) {
+        let entry = LogEntry(date: Date(), category: .error, message: message)
+        traceLock.lock()
+        appendToDiskLocked(entry)
+        if let handle = try? FileHandle(forWritingTo: logFileURL) {
+            defer { try? handle.close() }
+            try? handle.synchronize()
+        }
+        traceLock.unlock()
+    }
+
+    private func appendToDiskLocked(_ entry: LogEntry) {
+        let line = entry.line + "\n"
+        guard let data = line.data(using: .utf8) else { return }
+        if fileManager.fileExists(atPath: logFileURL.path) {
+            guard let handle = try? FileHandle(forWritingTo: logFileURL) else { return }
+            defer { try? handle.close() }
+            do {
+                try handle.seekToEnd()
+                try handle.write(contentsOf: data)
+                try handle.synchronize()
+            } catch {
+                // Ignore write failures to avoid recursion.
+            }
+        } else {
+            do {
+                try data.write(to: logFileURL, options: .atomic)
+            } catch {
+                // Ignore.
+            }
+        }
+    }
+
+    private func trimLogIfNeededLocked() {
+        guard let attrs = try? fileManager.attributesOfItem(atPath: logFileURL.path),
+              let size = attrs[.size] as? NSNumber,
+              size.intValue > maxLogBytes else { return }
+        // 保留最后约 1.2MB 内容。
+        let keep = 1_200_000
+        guard let handle = try? FileHandle(forReadingFrom: logFileURL) else { return }
+        defer { try? handle.close() }
+        try? handle.seek(toOffset: UInt64(max(0, size.intValue - keep)))
+        let tail = handle.readDataToEndOfFile()
+        try? tail.write(to: logFileURL, options: .atomic)
     }
 
     // MARK: - Disk IO

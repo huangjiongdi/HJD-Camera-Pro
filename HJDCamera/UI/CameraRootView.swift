@@ -16,6 +16,9 @@ struct CameraRootView: View {
 
     @State private var showExtremeZoom = false
     @State private var dragOffset: CGFloat = 0
+    /// 上次拍照闪退的原因横幅（ShutterTrace 启动时从诊断日志读取）。
+    @State private var crashBanner: String? = ShutterTrace.lastCrashReport
+    @State private var crashDismissed = false
 
     private let champagneGold = Color(red: 0.85, green: 0.75, blue: 0.55)
 
@@ -45,6 +48,11 @@ struct CameraRootView: View {
                         .environmentObject(appState)
                         .environmentObject(settingsStore)
                         .padding(.top, 6)
+
+                    // 上次拍照闪退的原因横幅（安全区内、灵动岛下方）。
+                    if !crashDismissed, let crash = crashBanner {
+                        crashBannerView(crash)
+                    }
 
                     Spacer(minLength: 12)
 
@@ -91,6 +99,51 @@ struct CameraRootView: View {
                     }
                 }
         )
+        .onAppear {
+            // 拍照成功后 ShutterTrace 会清空；回到相机界面时同步刷新。
+            crashBanner = ShutterTrace.lastCrashReport
+            if crashBanner == nil { crashDismissed = true }
+        }
+    }
+
+    // MARK: - 闪退原因横幅
+    @ViewBuilder
+    private func crashBannerView(_ crash: String) -> some View {
+        VStack(alignment: .leading, spacing: 4) {
+            HStack {
+                Text("上次拍照闪退，原因已记录")
+                    .font(.system(size: 12, weight: .bold))
+                    .foregroundColor(.white)
+                Spacer()
+                Button {
+                    withAnimation(.easeOut(duration: 0.2)) {
+                        crashDismissed = true
+                    }
+                } label: {
+                    Image(systemName: "xmark.circle.fill")
+                        .font(.system(size: 16))
+                        .foregroundColor(.white.opacity(0.7))
+                }
+            }
+            Text(crash)
+                .font(.system(size: 10, weight: .medium, design: .monospaced))
+                .foregroundColor(.white.opacity(0.9))
+                .lineLimit(10)
+            Text("完整步骤：设置 → 关于 → 诊断日志")
+                .font(.system(size: 10))
+                .foregroundColor(.white.opacity(0.7))
+        }
+        .padding(10)
+        .background(
+            RoundedRectangle(cornerRadius: 12)
+                .fill(Color(red: 0.55, green: 0.1, blue: 0.1).opacity(0.88))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 12)
+                        .stroke(champagneGold.opacity(0.5), lineWidth: 1)
+                )
+        )
+        .padding(.horizontal, 12)
+        .padding(.top, 6)
     }
 }
 

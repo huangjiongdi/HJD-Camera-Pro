@@ -20,6 +20,11 @@ struct HJDCameraApp: App {
     @StateObject private var diagnosticLogger = DiagnosticLogger.shared
     @StateObject private var lutManager = LUTManager.shared
 
+    init() {
+        // 尽早安装快门崩溃追踪，保证任何阶段闪退都能把原因写进诊断日志。
+        ShutterTrace.install()
+    }
+
     var body: some Scene {
         WindowGroup {
             RootView()

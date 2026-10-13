@@ -363,13 +363,30 @@ final class CameraManager: NSObject, ObservableObject {
 
     // MARK: - Capture
 
-    func capturePhoto() {
+    func capturePhoto(tap: Int = 0) {
         // 拍照与逐帧变焦共用 sessionQueue，避免与 lockForConfiguration 竞争；
         // 也保证 AVCapturePhotoSettings 的校验在固定队列上完成。
         sessionQueue.async { [weak self] in
-            guard let self = self else { return }
+            guard let self = self else {
+                ShutterTrace.mark(tap, "capturePhoto 已取消：CameraManager 已释放")
+                return
+            }
+
+            let output = self.photoOutput
+            let deviceDesc = self.currentDevice?.deviceType.rawValue ?? "nil"
+            let supportedFlash = Set(output.supportedFlashModes)
+            let previewFormats = output.availablePreviewPhotoPixelFormatTypes
+            let rawFormats = output.availableRawPhotoPixelFormatTypes
+            let photoFormats = output.availablePhotoPixelFormatTypes
+            ShutterTrace.mark(
+                tap, "进入 capturePhoto",
+                extra: "设备=\(deviceDesc) 会话运行=\(self.session.isRunning) 已配置=\(self.isConfigured) photoOutput已挂载=\(self.session.outputs.contains(output)) 连接=\(output.connection(with: .video) != nil) 支持闪光=\(supportedFlash.map { $0.rawValue }) 照片格式数=\(photoFormats.count) RAW格式数=\(rawFormats.count) 预览格式=\(previewFormats.map { $0 }) maxQuality=\(output.maxPhotoQualityPrioritization.rawValue)"
+            )
+
             guard self.session.isRunning,
-                  self.photoOutput.connection(with: .video) != nil else {
+                  self.session.outputs.contains(output),
+                  let connection = output.connection(with: .video) else {
+                ShutterTrace.mark(tap, "中止：会话未运行/输出未挂载/无连接")
                 DispatchQueue.main.async {
                     NotificationCenter.default.post(name: .hjdStorageWarning,
                                                     object: "相机尚未就绪，请稍后再试")
@@ -377,40 +394,58 @@ final class CameraManager: NSObject, ObservableObject {
                 return
             }
 
-            let output = self.photoOutput
             // 闪光灯必须是当前会话配置真实支持的模式。否则 capturePhoto
             // 会立即抛 NSInvalidArgumentException（虚拟三摄/前置/某些视频配置
             // 下 supportedFlashModes 可能为空或只有 .off），真机表现为一点快门
             // 就闪退。
-            let supportedFlash = Set(output.supportedFlashModes)
             let wantedFlash = AppState.shared.flashMode
             let flash: AVCaptureDevice.FlashMode = supportedFlash.contains(wantedFlash)
                 ? wantedFlash : .off
+            if flash != wantedFlash {
+                ShutterTrace.mark(tap, "闪光灯回退", extra: "想要=\(wantedFlash.rawValue) 实际=\(flash.rawValue)")
+            }
 
             // RAW capture must use the dedicated raw initializer; `rawFileType` is
             // read-only on a normal photo settings object.
             let settings: AVCapturePhotoSettings
             if AppState.shared.rawEnabled,
-               let rawFormat = output.availableRawPhotoPixelFormatTypes.first {
+               let rawFormat = rawFormats.first {
                 let raw = AVCapturePhotoSettings(rawPixelFormatType: rawFormat)
                 raw.flashMode = flash
-                raw.previewPhotoFormat = [
-                    kCVPixelBufferPixelFormatTypeKey as String: kCVPixelFormatType_32BGRA
-                ]
+                // 预览格式也必须是系统真实支持的，否则同样会抛异常。
+                // 该数组在不同 SDK 下可能桥接为 [NSNumber] 或 [OSType]，用条件
+                // 转换兼容两种情况。
+                let supportsBGRA = previewFormats.contains {
+                    ($0 as? OSType) == kCVPixelFormatType_32BGRA
+                }
+                if supportsBGRA {
+                    raw.previewPhotoFormat = [
+                        kCVPixelBufferPixelFormatTypeKey as String: kCVPixelFormatType_32BGRA
+                    ]
+                }
                 settings = raw
             } else {
                 let normal = AVCapturePhotoSettings()
                 normal.flashMode = flash
-                normal.photoQualityPrioritization = .balanced
+                // 质量优先级不能超过当前设备/配置允许的最大值。
+                if AVCapturePhotoOutput.QualityPrioritization.balanced.rawValue
+                    <= output.maxPhotoQualityPrioritization.rawValue {
+                    normal.photoQualityPrioritization = .balanced
+                } else {
+                    normal.photoQualityPrioritization = .speed
+                }
                 settings = normal
             }
+            ShutterTrace.mark(tap, "拍照参数就绪",
+                              extra: "RAW=\(settings.rawFileType != nil) 闪光=\(settings.flashMode.rawValue) 质量=\(settings.photoQualityPrioritization.rawValue)")
 
-            if let conn = output.connection(with: .video),
-               conn.isVideoRotationAngleSupported(OrientationObserver.shared.videoRotationAngle) {
-                conn.videoRotationAngle = OrientationObserver.shared.videoRotationAngle
+            if connection.isVideoRotationAngleSupported(OrientationObserver.shared.videoRotationAngle) {
+                connection.videoRotationAngle = OrientationObserver.shared.videoRotationAngle
             }
 
+            ShutterTrace.mark(tap, "即将调用 AVCapturePhotoOutput.capturePhoto")
             output.capturePhoto(with: settings, delegate: PhotoCapturePipeline.shared)
+            ShutterTrace.mark(tap, "capturePhoto 已提交（未立即异常）")
         }
     }
 

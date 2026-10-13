@@ -107,17 +107,35 @@ struct ShutterBar: View {
     }
 
     private func shutterAction() {
+        // 快门点击埋点：记录模式/闪光灯/RAW/倍率/会话状态，闪退时最后一条
+        // [SHUTTER] 记录可定位到具体步骤。
+        let tap = ShutterTrace.nextTap()
+        ShutterTrace.mark(
+            tap, "快门按下",
+            extra: "模式=\(appState.currentMode.rawValue) 闪光=\(flashName(AppState.shared.flashMode)) RAW=\(AppState.shared.rawEnabled) 倍率=\(String(format: "%.2f", Double(cameraManager.currentZoomFactor))) 录像中=\(appState.isRecording) 会话运行=\(cameraManager.isSessionRunning) 前置=\(cameraManager.usingFrontCamera)"
+        )
         hapticEngine.trigger(.shutter)
         if appState.currentMode.isVideoMode {
             if appState.isRecording {
+                ShutterTrace.mark(tap, "停止录像")
                 cameraManager.stopRecording()
                 appState.isRecording = false
             } else {
+                ShutterTrace.mark(tap, "开始录像")
                 cameraManager.startRecording()
                 appState.isRecording = true
             }
         } else {
-            cameraManager.capturePhoto()
+            cameraManager.capturePhoto(tap: tap)
+        }
+    }
+
+    private func flashName(_ m: AVCaptureDevice.FlashMode) -> String {
+        switch m {
+        case .off: return "off"
+        case .on: return "on"
+        case .auto: return "auto"
+        @unknown default: return "unknown"
         }
     }
 

@@ -48,12 +48,29 @@ final class PhotoCapturePipeline: NSObject, AVCapturePhotoCaptureDelegate, Obser
 
     func capture(settings: AVCapturePhotoSettings? = nil) {
         let output = CameraManager.shared.photoOutput
+        let tap = ShutterTrace.lastTap
         guard output.connection(with: .video) != nil else {
+            ShutterTrace.mark(tap, "连拍/定时拍照中止：无连接")
             NotificationCenter.default.post(name: .hjdStorageWarning,
                                            object: "相机尚未就绪，请稍后再试")
             return
         }
-        let resolved = settings ?? AVCapturePhotoSettings()
+        let resolved: AVCapturePhotoSettings
+        if let settings = settings {
+            resolved = settings
+        } else {
+            // 连拍/定时路径同样要做闪光灯白名单，避免同样的 NSException。
+            let normal = AVCapturePhotoSettings()
+            let wanted = AppState.shared.flashMode
+            if Set(output.supportedFlashModes).contains(wanted) {
+                normal.flashMode = wanted
+            } else {
+                normal.flashMode = .off
+            }
+            normal.photoQualityPrioritization = .balanced
+            resolved = normal
+        }
+        ShutterTrace.mark(tap, "连拍/定时 capturePhoto 提交")
         output.capturePhoto(with: resolved, delegate: self)
     }
 
@@ -93,10 +110,27 @@ final class PhotoCapturePipeline: NSObject, AVCapturePhotoCaptureDelegate, Obser
 
     // MARK: - Delegate
 
+    /// 系统已开始拍照（曝光设置就绪）。
+    func photoOutput(_ output: AVCapturePhotoOutput,
+                     willBeginCaptureFor resolvedSettings: AVCaptureResolvedPhotoSettings) {
+        let tap = ShutterTrace.lastTap
+        ShutterTrace.mark(tap, "delegate willBeginCapture",
+                          extra: "uniqueID=\(resolvedSettings.uniqueID) 尺寸=\(resolvedSettings.photoDimensions.width)x\(resolvedSettings.photoDimensions.height)")
+    }
+
+    /// 拍照即将发生（快门动画时机）。
+    func photoOutput(_ output: AVCapturePhotoOutput,
+                     willCapturePhotoFor resolvedSettings: AVCaptureResolvedPhotoSettings) {
+        ShutterTrace.mark(ShutterTrace.lastTap, "delegate willCapturePhoto（快门动画）")
+    }
+
     func photoOutput(_ output: AVCapturePhotoOutput,
                      didFinishProcessingPhoto photo: AVCapturePhoto,
                      error: Error?) {
+        let tap = ShutterTrace.lastTap
         if let error = error {
+            ShutterTrace.mark(tap, "delegate didFinishProcessingPhoto 报错",
+                              extra: "\(error.localizedDescription)")
             DispatchQueue.main.async {
                 NotificationCenter.default.post(name: .hjdStorageWarning, object: error)
             }
@@ -105,7 +139,9 @@ final class PhotoCapturePipeline: NSObject, AVCapturePhotoCaptureDelegate, Obser
         }
 
         // 1. 立即拿到原始字节（含 EXIF），写到受保护的临时文件。
+        ShutterTrace.mark(tap, "delegate 收到照片，开始读取原始字节")
         guard let originalData = photo.fileDataRepresentation() else {
+            ShutterTrace.mark(tap, "fileDataRepresentation 返回 nil（无照片数据）")
             DispatchQueue.main.async {
                 NotificationCenter.default.post(name: .hjdStorageWarning,
                                                 object: "照片数据为空，请重试")
@@ -114,10 +150,14 @@ final class PhotoCapturePipeline: NSObject, AVCapturePhotoCaptureDelegate, Obser
             return
         }
         let isRAW = photo.isRawPhoto
+        ShutterTrace.mark(tap, "原始字节就绪",
+                          extra: "RAW=\(isRAW) 字节=\(originalData.count)")
         let originalURL = writeOriginalToTemp(data: originalData, isRAW: isRAW)
+        ShutterTrace.mark(tap, "原始临时文件已写", extra: originalURL.lastPathComponent)
 
         // 2. 多曝光合成模式。
         if multiExposureTarget > 0 {
+            ShutterTrace.mark(tap, "进入多曝光合成")
             accumulateMultiExposureFrame(data: originalData)
             return
         }
@@ -136,12 +176,28 @@ final class PhotoCapturePipeline: NSObject, AVCapturePhotoCaptureDelegate, Obser
         let keepOriginal = AppSettingsStore.shared.keepOriginal
         let fallbackOnFailure = AppSettingsStore.shared.fallbackOnFailure
         let digitalCrop = CameraManager.shared.currentDigitalCrop
+        ShutterTrace.mark(tap, "开始后台保存",
+                          extra: "保留原图=\(keepOriginal) 数字裁切=\(String(format: "%.3f", Double(digitalCrop)))")
 
         processCapture(originalData: originalData,
                        originalURL: originalURL,
                        keepOriginal: keepOriginal,
                        fallbackOnFailure: fallbackOnFailure,
-                       digitalCrop: digitalCrop)
+                       digitalCrop: digitalCrop,
+                       tap: tap)
+    }
+
+    /// 拍照回调链全部结束（无论成败）。
+    func photoOutput(_ output: AVCapturePhotoOutput,
+                     didFinishCaptureFor resolvedSettings: AVCaptureResolvedPhotoSettings,
+                     error: Error?) {
+        let tap = ShutterTrace.lastTap
+        if let error = error {
+            ShutterTrace.mark(tap, "delegate didFinishCapture 报错",
+                              extra: "\(error.localizedDescription)")
+        } else {
+            ShutterTrace.mark(tap, "delegate didFinishCapture 成功（系统回调链完成）")
+        }
     }
 
     // MARK: - 原始照片保护（ImageIO，EXIF 原样保留）
@@ -162,31 +218,42 @@ final class PhotoCapturePipeline: NSObject, AVCapturePhotoCaptureDelegate, Obser
                                 originalURL: URL,
                                 keepOriginal: Bool,
                                 fallbackOnFailure: Bool,
-                                digitalCrop: CGFloat) {
+                                digitalCrop: CGFloat,
+                                tap: Int) {
         Task.detached(priority: .userInitiated) {
             // 1) 原图优先入库——绝不丢片、始终保留原图。
             if keepOriginal {
-                if case .failure(let err) = await PhotoLibraryExporter.shared.exportPhoto(data: originalData) {
+                ShutterTrace.mark(tap, "原图写入相册开始")
+                let originalResult = await PhotoLibraryExporter.shared.exportPhoto(data: originalData)
+                if case .failure(let err) = originalResult {
                     DiagnosticLogger.shared.error("Original save failed: \(err)")
+                    ShutterTrace.mark(tap, "原图写入相册失败", extra: "\(err)")
+                } else {
+                    ShutterTrace.mark(tap, "原图已写入相册")
                 }
             }
 
             // 2) 渲染"所见即所得"成片（高倍数字裁切 + 轻量增强）。
+            ShutterTrace.mark(tap, "开始渲染所见即所得成片")
             let enhancedURL = autoreleasepool {
                 Self.renderEnhanced(originalURL: originalURL,
                                     digitalCrop: digitalCrop,
                                     context: self.ciContext)
             }
+            ShutterTrace.mark(tap, enhancedURL == nil ? "成片渲染失败（将回退原图）" : "成片渲染完成")
 
             var finalURL = originalURL
             if let enhancedURL,
                let enhancedData = try? Data(contentsOf: enhancedURL) {
+                ShutterTrace.mark(tap, "成片写入相册开始", extra: "字节=\(enhancedData.count)")
                 let result = await PhotoLibraryExporter.shared.exportPhoto(data: enhancedData)
                 switch result {
                 case .success:
                     finalURL = enhancedURL
+                    ShutterTrace.mark(tap, "成片已写入相册")
                 case .failure(let err):
                     DiagnosticLogger.shared.error("Enhanced save failed: \(err)")
+                    ShutterTrace.mark(tap, "成片写入相册失败", extra: "\(err)")
                     if !keepOriginal && fallbackOnFailure {
                         // 不保留原图且增强片入库失败时，把原图兜底入库。
                         _ = await PhotoLibraryExporter.shared.exportPhoto(data: originalData)
@@ -194,6 +261,7 @@ final class PhotoCapturePipeline: NSObject, AVCapturePhotoCaptureDelegate, Obser
                 }
             } else if !keepOriginal && fallbackOnFailure {
                 // 增强渲染失败：原图兜底入库。
+                ShutterTrace.mark(tap, "增强失败，原图兜底入库")
                 _ = await PhotoLibraryExporter.shared.exportPhoto(data: originalData)
             }
 
@@ -207,6 +275,9 @@ final class PhotoCapturePipeline: NSObject, AVCapturePhotoCaptureDelegate, Obser
                 }
                 NotificationCenter.default.post(name: .hjdCaptureCompleted, object: finalURL)
             }
+            ShutterTrace.mark(tap, "拍照流程结束")
+            // 本次拍照成功，清除上次崩溃的置顶提示。
+            ShutterTrace.clearCrashReport()
         }
     }
 
