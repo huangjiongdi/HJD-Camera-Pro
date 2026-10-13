@@ -32,9 +32,12 @@ final class FocusExposureController: ObservableObject {
     @Published var manualFocusDistance: Double = -1  // -1 = continuous
 
     private var motionUnlockToken: NSObjectProtocol?
-    private let device = CameraManager.shared.currentDevice
 
     private init() {}
+
+    /// Always read the live device — it is nil at init time and changes when the
+    /// user flips the camera. Caching it once made every focus call a no-op.
+    private var device: AVCaptureDevice? { CameraManager.shared.currentDevice }
 
     // MARK: - Tap focus / expose
 
@@ -46,13 +49,23 @@ final class FocusExposureController: ObservableObject {
             try device.lockForConfiguration()
             if device.isFocusPointOfInterestSupported {
                 device.focusPointOfInterest = point
-                device.focusMode = .autoFocus
             }
             if device.isExposurePointOfInterestSupported {
                 device.exposurePointOfInterest = point
-                device.exposureMode = .autoExpose
+            }
+            // Use continuous modes so the camera keeps refocusing / re-exposing
+            // after the tap, instead of freezing on one-shot focus.
+            if device.isFocusModeSupported(.continuousAutoFocus) {
+                device.focusMode = .continuousAutoFocus
+            }
+            if device.isExposureModeSupported(.continuousAutoExposure) {
+                device.exposureMode = .continuousAutoExposure
             }
             device.unlockForConfiguration()
+            AppState.shared.focusLocked = false
+            AppState.shared.exposureLocked = false
+            isFocusLocked = false
+            isExposureLocked = false
         } catch {
             CameraHealthMonitor.shared.recordStartupFailure(error)
         }

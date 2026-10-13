@@ -106,23 +106,64 @@ final class PhotoCapturePipeline: NSObject, AVCapturePhotoCaptureDelegate, Obser
 
     // MARK: - AI enhancement with Lanczos fallback
 
-    private func enhance(originalURL: URL, photo: AVCapturePhoto) {
-        AppState.shared.isProcessing = true
-        AppState.shared.processingProgress = 0.1
+    private let workQueue = DispatchQueue(label: "com.hjd.camera.photoEnhance", qos: .userInitiated)
 
-        do {
-            let processedURL = try runAIEnhancement(originalURL: originalURL, photo: photo)
-            AppState.shared.lastCapturedImageURL = processedURL
+    private func enhance(originalURL: URL, photo: AVCapturePhoto) {
+        DispatchQueue.main.async {
+            AppState.shared.isProcessing = true
+            AppState.shared.processingProgress = 0.1
+        }
+        workQueue.async {
+            // 1) Try real AI super-resolution (Real-ESRGAN via CoreML).
+            if let source = CIImage(contentsOf: originalURL) {
+                AIModelRunner.shared.run(model: "sr_generic", input: source) { [weak self] upscaled in
+                    guard let self = self else { return }
+                    // The completion fires on the main thread — re-encode on workQueue.
+                    self.workQueue.async {
+                        self.finishEnhancement(image: upscaled ?? source, fallbackOriginal: originalURL)
+                    }
+                }
+                return
+            }
+            // Could not decode — fall straight back to the original file.
+            self.finishEnhancement(image: nil, fallbackOriginal: originalURL)
+        }
+    }
+
+    /// Encode the processed image to JPEG, write it out, export to the system
+    /// photo library, and update UI. Never throws on the main path — any failure
+    /// still keeps the original.
+    private func finishEnhancement(image: CIImage?, fallbackOriginal: URL) {
+        let outURL = fileManager.temporaryDirectory
+            .appendingPathComponent("processed-\(UUID().uuidString).jpg")
+        var success = false
+
+        if let image = image {
+            // Gentle sharpen on top of the AI result.
+            let sharpened = image.applyingFilter("CISharpenLuminance",
+                                                  parameters: [kCIInputSharpnessKey: 0.35])
+            if let data = try? ciContext.jpegRepresentation(of: sharpened,
+                                                            colorSpace: sharpened.colorSpace ?? CGColorSpaceCreateDeviceRGB()) {
+                try? data.write(to: outURL, options: .atomic)
+                success = FileManager.default.fileExists(atPath: outURL.path)
+            }
+        }
+
+        let finalURL = success ? outURL : fallbackOriginal
+
+        // Export to the system photo library (this is what was missing — nothing
+        // was ever saved to Photos).
+        if let data = try? Data(contentsOf: finalURL) {
+            Task.detached {
+                _ = await PhotoLibraryExporter.shared.exportPhoto(data: data)
+            }
+        }
+
+        DispatchQueue.main.async {
+            AppState.shared.lastCapturedImageURL = finalURL
             AppState.shared.isProcessing = false
             AppState.shared.processingProgress = 1.0
-            NotificationCenter.default.post(name: .hjdCaptureCompleted, object: processedURL)
-        } catch {
-            // Fallback: traditional Lanczos resample, guaranteeing >= 12 MP.
-            let fallbackURL = lanczosFallback(originalURL: originalURL)
-            AppState.shared.lastCapturedImageURL = fallbackURL
-            AppState.shared.isProcessing = false
-            AppState.shared.processingProgress = 1.0
-            NotificationCenter.default.post(name: .hjdCaptureCompleted, object: fallbackURL)
+            NotificationCenter.default.post(name: .hjdCaptureCompleted, object: finalURL)
         }
 
         if pendingBurst > 0 {
@@ -133,33 +174,8 @@ final class PhotoCapturePipeline: NSObject, AVCapturePhotoCaptureDelegate, Obser
         }
     }
 
-    /// AI enhancement entry point. In the full app this dispatches to the AI
-    /// studio; here it performs the staged work and reports progress.
-    private func runAIEnhancement(originalURL: URL, photo: AVCapturePhoto) throws -> URL {
-        guard let source = CIImage(contentsOf: originalURL) else {
-            throw PipelineError.decodeFailed
-        }
-        AppState.shared.processingProgress = 0.4
-
-        // Minimum 12 MP output gate — mirror the AI model's output scale.
-        let megapixels = (source.extent.width * source.extent.height) / 1_000_000
-        guard megapixels >= 12.0 || AppState.shared.proSettings.outputScale > 1.0 else {
-            throw PipelineError.insufficientResolution
-        }
-
-        AppState.shared.processingProgress = 0.8
-        let outURL = fileManager.temporaryDirectory
-            .appendingPathComponent("processed-\(UUID().uuidString).heic")
-        let ctx = CIContext()
-        try ctx.writeHEIFRepresentation(of: source, to: outURL, format: .BGRA8,
-                                         colorSpace: source.colorSpace ?? CGColorSpaceCreateDeviceRGB(),
-                                         options: [:])
-        return outURL
-    }
-
     private func lanczosFallback(originalURL: URL) -> URL {
         guard let source = CIImage(contentsOf: originalURL) else { return originalURL }
-        // Ensure at least 12 MP via Lanczos upsampling when below the gate.
         let megapixels = (source.extent.width * source.extent.height) / 1_000_000
         var image = source
         if megapixels < 12.0 {
@@ -168,11 +184,13 @@ final class PhotoCapturePipeline: NSObject, AVCapturePhotoCaptureDelegate, Obser
                 .applyingFilter("CILanczosScaleTransform")
         }
         let outURL = fileManager.temporaryDirectory
-            .appendingPathComponent("fallback-\(UUID().uuidString).heic")
-        try? ciContext.writeHEIFRepresentation(of: image, to: outURL, format: .BGRA8,
-                                               colorSpace: image.colorSpace ?? CGColorSpaceCreateDeviceRGB(),
-                                               options: [:])
-        return outURL
+            .appendingPathComponent("fallback-\(UUID().uuidString).jpg")
+        if let data = try? ciContext.jpegRepresentation(of: image,
+                                                        colorSpace: image.colorSpace ?? CGColorSpaceCreateDeviceRGB()) {
+            try? data.write(to: outURL, options: .atomic)
+            return outURL
+        }
+        return originalURL
     }
 
     // MARK: - Multi-exposure accumulation

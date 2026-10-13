@@ -21,27 +21,20 @@ struct CameraRootView: View {
 
     var body: some View {
         ZStack {
-            // Background
-            Color(red: 0.05, green: 0.05, blue: 0.05)
+            // Full-bleed live preview (background layer).
+            CameraPreviewContainer()
+                .environmentObject(appState)
+                .environmentObject(cameraManager)
+                .environmentObject(settingsStore)
                 .ignoresSafeArea()
 
+            // Foreground UI layered over the preview.
             VStack(spacing: 0) {
-                // Top status bar
                 TopStatusBar()
                     .environmentObject(appState)
                     .environmentObject(settingsStore)
 
-                Spacer(minLength: 0)
-
-                // Center preview area
-                CameraPreviewContainer()
-                    .environmentObject(appState)
-                    .environmentObject(cameraManager)
-                    .environmentObject(settingsStore)
-                    .cornerRadius(12)
-                    .padding(.horizontal, 12)
-
-                Spacer(minLength: 0)
+                Spacer()
 
                 // Zoom control
                 ZoomControlView()
@@ -74,6 +67,7 @@ struct CameraRootView: View {
                     .zIndex(10)
             }
         }
+        .ignoresSafeArea()
         .gesture(
             DragGesture()
                 .onChanged { value in

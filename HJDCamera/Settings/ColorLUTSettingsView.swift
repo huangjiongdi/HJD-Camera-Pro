@@ -11,6 +11,7 @@ import SwiftUI
 struct ColorLUTSettingsView: View {
     @EnvironmentObject var settingsStore: AppSettingsStore
     @EnvironmentObject var lutManager: LUTManager
+    @State private var showImporter = false
 
     private let champagneGold = Color(red: 0.85, green: 0.75, blue: 0.55)
 
@@ -52,7 +53,7 @@ struct ColorLUTSettingsView: View {
 
             Section("导入LUT") {
                 Button {
-                    lutManager.presentImporter()
+                    showImporter = true
                 } label: {
                     Label("导入 .cube 文件", systemImage: "square.and.arrow.down.on.square")
                 }
@@ -64,6 +65,17 @@ struct ColorLUTSettingsView: View {
         .navigationTitle("色彩与LUT")
         .navigationBarTitleDisplayMode(.inline)
         .toolbarColorScheme(.dark, for: .navigationBar)
+        .fileImporter(isPresented: $showImporter,
+                      allowedContentTypes: [.data],
+                      allowsMultipleSelection: false) { result in
+            switch result {
+            case .success(let urls):
+                guard let url = urls.first, url.pathExtension.lowercased() == "cube" else { return }
+                lutManager.importCubeFile(url: url)
+            case .failure(let error):
+                DiagnosticLogger.shared.log("LUT import failed: \(error.localizedDescription)", category: .storage)
+            }
+        }
     }
 
     private func sliderRow(_ label: String, value: Binding<Double>) -> some View {

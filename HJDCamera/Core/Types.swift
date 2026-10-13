@@ -118,6 +118,8 @@ struct VideoFormat: Identifiable, Hashable {
         VideoFormat(resolution: "4K", frameRate: 60, codec: "HEVC", isHDR: true, isProRes: false),
         VideoFormat(resolution: "4K", frameRate: 120, codec: "HEVC", isHDR: false, isProRes: false),
         VideoFormat(resolution: "4K", frameRate: 240, codec: "HEVC", isHDR: false, isProRes: false),
+        VideoFormat(resolution: "8K", frameRate: 30, codec: "HEVC", isHDR: true, isProRes: false),
+        VideoFormat(resolution: "8K", frameRate: 60, codec: "HEVC", isHDR: true, isProRes: false),
     ]
 }
 

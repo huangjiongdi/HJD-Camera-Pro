@@ -14,7 +14,7 @@ struct VideoSettingsView: View {
 
     private let champagneGold = Color(red: 0.85, green: 0.75, blue: 0.55)
 
-    private let resolutions = ["480p", "720p", "1080p", "4K"]
+    private let resolutions = ["480p", "720p", "1080p", "4K", "8K"]
     private let frameRates = [24, 25, 30, 60, 120, 240]
 
     var body: some View {

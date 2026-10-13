@@ -17,6 +17,7 @@ struct ZoomControlView: View {
     @State private var sliderValue: Double = 1.0
 
     private let champagneGold = Color(red: 0.85, green: 0.75, blue: 0.55)
+    private let allPoints: [Double] = [0.5, 1, 2, 5, 10, 25, 50, 100, 200, 400, 500]
 
     var body: some View {
         VStack(spacing: 8) {
@@ -35,15 +36,31 @@ struct ZoomControlView: View {
                 ForEach(ZoomLevel.standard) { level in
                     zoomButton(level)
                 }
+                // Entry to extreme telephoto (25×–500×).
+                Button {
+                    withAnimation { appState.showExtremeZoomPanel.toggle() }
+                    hapticEngine.selectionChanged()
+                } label: {
+                    Text("500×")
+                        .font(.system(size: 13, weight: .semibold, design: .monospaced))
+                        .foregroundColor(appState.showExtremeZoomPanel ? champagneGold : .white.opacity(0.7))
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 6)
+                        .background(
+                            RoundedRectangle(cornerRadius: 16)
+                                .fill(appState.showExtremeZoomPanel ? champagneGold.opacity(0.2) : Color.white.opacity(0.08))
+                        )
+                }
+                .buttonStyle(.plain)
             }
 
-            // Fine slider (expanded)
+            // Full-range slider (0.5×–500×), shown on long-press of any zoom button.
             if showFineSlider {
-                fineSlider
+                fullRangeSlider
                     .transition(.opacity.combined(with: .move(edge: .bottom)))
             }
 
-            // Extreme zoom panel (swipe up)
+            // Extreme zoom panel (25×–500×)
             if appState.showExtremeZoomPanel {
                 extremeZoomRow
                     .transition(.opacity.combined(with: .move(edge: .bottom)))
@@ -80,6 +97,14 @@ struct ZoomControlView: View {
             )
         }
         .buttonStyle(.plain)
+        // Long-press anywhere on the zoom row reveals the 0.5–500 slider.
+        .simultaneousGesture(
+            LongPressGesture(minimumDuration: 0.35).onEnded { _ in
+                sliderValue = appState.currentZoomFactor
+                withAnimation { showFineSlider = true }
+                hapticEngine.selectionChanged()
+            }
+        )
     }
 
     private func sourceLabel(_ source: ZoomSource) -> String {
@@ -101,31 +126,70 @@ struct ZoomControlView: View {
     }
 
     private func selectZoom(_ level: ZoomLevel) {
+        // Animated ramp between focal lengths (no hard jump).
         appState.setZoom(level.factor, source: level.source)
-        cameraManager.setZoomFactor(CGFloat(level.factor))
+        cameraManager.rampZoom(to: CGFloat(level.factor), rate: 8.0)
         hapticEngine.trigger(.zoomNode)
         sliderValue = level.factor
     }
 
-    // MARK: - Fine Slider
+    // MARK: - Full-range slider (0.5× – 500×, long-press)
 
-    private var fineSlider: some View {
-        HStack {
-            Text("0.5×")
-                .font(.system(size: 10, design: .monospaced))
-                .foregroundColor(.white.opacity(0.5))
-            Slider(value: $sliderValue, in: 0.5...10, onEditingChanged: { editing in
-                if !editing {
-                    appState.setZoom(sliderValue, source: sliderValue > 5 ? .hybrid : .optical)
-                    cameraManager.setZoomFactor(CGFloat(sliderValue))
+    /// Slider position is mapped non-linearly: the lower half of the track covers
+    /// 0.5×–10× (precise framing), the upper half covers 10×–500× with heavier
+    /// damping so high powers can be dialled in without overshooting.
+    private var fullRangeSlider: some View {
+        VStack(spacing: 4) {
+            HStack {
+                Text("0.5×")
+                    .font(.system(size: 10, design: .monospaced))
+                    .foregroundColor(.white.opacity(0.5))
+                Spacer()
+                Text(String(format: "%.1f×", sliderValue))
+                    .font(.system(size: 12, weight: .semibold, design: .monospaced))
+                    .foregroundColor(champagneGold)
+                Spacer()
+                Text("500×")
+                    .font(.system(size: 10, design: .monospaced))
+                    .foregroundColor(.white.opacity(0.5))
+            }
+            Slider(value: Binding(
+                get: { Self.nonLinearToUnit(sliderValue) },
+                set: { unit in
+                    let z = Self.unitToNonLinear(unit)
+                    sliderValue = z
+                    appState.setZoom(z, source: z >= 100 ? .ai : (z > 10 ? .digital : .optical))
+                    cameraManager.setZoomFactor(CGFloat(z))
                 }
-            })
+            ))
             .tint(champagneGold)
-            Text("10×")
-                .font(.system(size: 10, design: .monospaced))
-                .foregroundColor(.white.opacity(0.5))
+            HStack(spacing: 6) {
+                ForEach(allPoints, id: \.self) { p in
+                    Text(p == 500 ? "500" : String(format: "%g", p))
+                        .font(.system(size: 8, design: .monospaced))
+                        .foregroundColor(abs(sliderValue - p) < 0.5 ? champagneGold : .white.opacity(0.4))
+                        .onTapGesture {
+                            sliderValue = p
+                            let src: ZoomSource = p >= 100 ? .ai : (p > 10 ? .digital : .optical)
+                            selectZoom(ZoomLevel(factor: p, label: String(format: "%g×", p), source: src, isExtreme: p >= 25))
+                        }
+                }
+            }
         }
         .padding(.horizontal, 8)
+        .padding(.vertical, 6)
+        .background(RoundedRectangle(cornerRadius: 12).fill(Color.black.opacity(0.55)))
+    }
+
+    // Non-linear zoom mapping (log-ish): unit 0..1 -> zoom 0.5..500.
+    static func unitToNonLinear(_ u: Double) -> Double {
+        // log10 range from log10(0.5) to log10(500).
+        let lo = log10(0.5), hi = log10(500)
+        return pow(10, lo + (hi - lo) * u)
+    }
+    static func nonLinearToUnit(_ z: Double) -> Double {
+        let lo = log10(0.5), hi = log10(500)
+        return (log10(min(max(z, 0.5), 500)) - lo) / (hi - lo)
     }
 
     // MARK: - Extreme Zoom

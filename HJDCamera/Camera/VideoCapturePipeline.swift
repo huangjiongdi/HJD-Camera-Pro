@@ -147,6 +147,10 @@ final class VideoCapturePipeline: NSObject, AVCaptureFileOutputRecordingDelegate
             return
         }
         AppState.shared.lastCapturedImageURL = url
+        // Export the finished take to the system photo library.
+        Task.detached {
+            _ = await PhotoLibraryExporter.shared.exportVideo(fileURL: url)
+        }
     }
 
     private func recover(from error: Error, fileURL: URL) {

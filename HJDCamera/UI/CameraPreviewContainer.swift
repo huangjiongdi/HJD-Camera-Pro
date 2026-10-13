@@ -22,9 +22,10 @@ struct CameraPreviewContainer: View {
     var body: some View {
         GeometryReader { geo in
             ZStack {
-                // Live preview layer
+                // Live preview layer — fills the whole screen (full-bleed).
                 CameraPreviewView(session: cameraManager.session)
                     .environmentObject(cameraManager)
+                    .frame(width: geo.size.width, height: geo.size.height)
 
                 // Assistive overlays
                 if settingsStore.gridEnabled {
@@ -52,7 +53,6 @@ struct CameraPreviewContainer: View {
             .frame(width: geo.size.width, height: geo.size.height)
             .clipped()
         }
-        .aspectRatio(4.0/3.0, contentMode: .fit)
     }
 
     // MARK: - Detection Boxes

@@ -4,6 +4,9 @@
 //
 
 import SwiftUI
+import AVFoundation
+import Photos
+import CoreLocation
 
 @main
 struct HJDCameraApp: App {
@@ -34,8 +37,29 @@ struct HJDCameraApp: App {
                 .onAppear {
                     diagnosticLogger.log("App launched", category: .app)
                     aiModelRegistry.loadBundledModels()
-                    cameraManager.startSession()
+                    requestPermissionsAndStartCamera()
                 }
+        }
+    }
+
+    /// Request all runtime permissions up front, then configure & start the
+    /// capture session. Starting the session before camera permission is granted
+    /// leaves the preview black until the user flips the camera — so we wait.
+    private func requestPermissionsAndStartCamera() {
+        Task {
+            async let cameraGranted = AVCaptureDevice.requestAccess(for: .video)
+            async let micGranted = AVCaptureDevice.requestAccess(for: .audio)
+            async let photoGranted = PHPhotoLibrary.requestAuthorization(for: .readWrite)
+            _ = await (cameraGranted, micGranted, photoGranted)
+
+            // Location (for EXIF GPS) — best effort.
+            let loc = CLLocationManager()
+            loc.requestWhenInUseAuthorization()
+
+            await MainActor.run {
+                cameraManager.configureSession()
+                cameraManager.startSession()
+            }
         }
     }
 }

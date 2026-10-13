@@ -46,6 +46,8 @@ final class AppState: ObservableObject {
     @Published var captureQuality: QualityAssessment?
     @Published var isProcessing = false
     @Published var processingProgress: Double = 0
+    @Published var liveEnhanceFrameCount: Int = 0
+    @Published var liveEnhanceLatency: TimeInterval = 0
 
     private init() {}
 

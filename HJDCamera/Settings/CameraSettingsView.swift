@@ -36,8 +36,13 @@ struct CameraSettingsView: View {
                     Text("12 MP").tag("12MP")
                     Text("24 MP").tag("24MP")
                     Text("48 MP").tag("48MP")
-                    Text("自定义").tag("custom")
+                    Text("50 MP").tag("50MP")
+                    Text("100 MP (AI超算)").tag("100MP")
+                    Text("260 MP (AI超算)").tag("260MP")
                 }
+                Text("100MP/260MP 通过多帧融合 + Real-ESRGAN AI 超分输出，非传感器原生像素。")
+                    .font(.system(size: 11))
+                    .foregroundColor(.white.opacity(0.5))
             }
 
             Section {

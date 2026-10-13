@@ -27,7 +27,7 @@ struct CameraPreviewView: UIViewRepresentable {
     func makeUIView(context: Context) -> PreviewContainerView {
         let view = PreviewContainerView()
         view.videoPreviewLayer.session = session
-        view.videoPreviewLayer.videoGravity = .resizeAspect
+        view.videoPreviewLayer.videoGravity = .resizeAspectFill
 
         let tap = UITapGestureRecognizer(target: context.coordinator,
                                           action: #selector(Coordinator.handleTap(_:)))

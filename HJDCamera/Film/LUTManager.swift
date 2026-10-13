@@ -35,13 +35,33 @@ class LUTManager: ObservableObject {
     }
 
     func presentImporter() {
-        // Placeholder: presented via SwiftUI .fileImporter
+        // Presented via SwiftUI .fileImporter in ColorLUTSettingsView.
     }
 
+    /// Copy the picked .cube into the app's Documents folder (security-scoped
+    /// access required for security-scoped bookmarks / document picker URLs).
     func importCubeFile(url: URL) {
-        let name = url.deletingPathExtension().lastPathComponent
-        let lut = LUTInfo(name: name, category: .custom, isBuiltin: false)
-        customLUTs.append(lut)
+        let needsStop = url.startAccessingSecurityScopedResource()
+        defer { if needsStop { url.stopAccessingSecurityScopedResource() } }
+        do {
+            let name = url.deletingPathExtension().lastPathComponent
+            let docs = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
+                .appendingPathComponent("LUTs")
+            try FileManager.default.createDirectory(at: docs, withIntermediateDirectories: true)
+            let dest = docs.appendingPathComponent(url.lastPathComponent)
+            if FileManager.default.fileExists(atPath: dest.path) {
+                try FileManager.default.removeItem(at: dest)
+            }
+            try FileManager.default.copyItem(at: url, to: dest)
+            // Avoid duplicates.
+            if !customLUTs.contains(where: { $0.name == name }) {
+                let lut = LUTInfo(name: name, category: .custom, isBuiltin: false, fileURL: dest)
+                customLUTs.append(lut)
+            }
+            activeLUTName = name
+        } catch {
+            DiagnosticLogger.shared.log("copy LUT failed: \(error.localizedDescription)", category: .storage)
+        }
     }
 
     func selectLUT(_ name: String) {
@@ -65,4 +85,5 @@ struct LUTInfo: Identifiable {
     let name: String
     let category: LUTCategory
     let isBuiltin: Bool
+    var fileURL: URL? = nil
 }

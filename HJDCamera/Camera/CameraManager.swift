@@ -13,6 +13,7 @@ import UIKit
 import SwiftUI
 import Combine
 import CoreGraphics
+import CoreImage
 
 final class CameraManager: NSObject, ObservableObject {
     static let shared = CameraManager()
@@ -69,7 +70,7 @@ final class CameraManager: NSObject, ObservableObject {
             if self.session.canAddOutput(self.videoDataOutput) {
                 self.session.addOutput(self.videoDataOutput)
                 self.videoDataOutput.alwaysDiscardsLateVideoFrames = true
-                self.videoDataOutput.setSampleBufferDelegate(nil, queue: self.sessionQueue)
+                self.videoDataOutput.setSampleBufferDelegate(self, queue: self.sessionQueue)
             }
 
             self.session.commitConfiguration()
@@ -273,6 +274,32 @@ final class CameraManager: NSObject, ObservableObject {
         }
         previewLayer?.connection.map {
             if $0.isVideoRotationAngleSupported(angle) { $0.videoRotationAngle = angle }
+        }
+    }
+}
+
+// MARK: - Live AI preview frames
+
+extension CameraManager: AVCaptureVideoDataOutputSampleBufferDelegate {
+    private static var lastLiveRun: TimeInterval = 0
+
+    func captureOutput(_ output: AVCaptureOutput,
+                       didOutput sampleBuffer: CMSampleBuffer,
+                       from connection: AVCaptureConnection) {
+        let level = AppState.shared.aiPreviewLevel
+        guard level != .off else { return }
+        // Throttle: run the live engine at ~12 fps to avoid heating/latency.
+        let now = CFAbsoluteTimeGetCurrent()
+        guard now - Self.lastLiveRun > 0.08 else { return }
+        Self.lastLiveRun = now
+
+        guard let pixelBuffer = CMSampleBufferGetImageBuffer(sampleBuffer) else { return }
+        let ciImage = CIImage(cvPixelBuffer: pixelBuffer)
+        let result = LiveDetailEngine.shared.enhance(image: ciImage, level: level)
+        // Keep the badge honest: the live engine is now actually receiving frames.
+        DispatchQueue.main.async {
+            AppState.shared.liveEnhanceFrameCount += 1
+            AppState.shared.liveEnhanceLatency = result.latency
         }
     }
 }
