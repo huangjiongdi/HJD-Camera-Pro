@@ -169,9 +169,9 @@ private struct FineZoomRuler: View {
     }
 
     var body: some View {
-        VStack(spacing: 4) {
+        VStack(spacing: 2) {
             HStack {
-                Text("轮盘变焦 · 对数刻度")
+                Text("半轮盘变焦 · 0.5–500×")
                     .font(.system(size: 11, weight: .medium))
                 Spacer()
                 Text(currentZoomLabel)
@@ -180,8 +180,11 @@ private struct FineZoomRuler: View {
                     .foregroundColor(champagneGold)
             }
             .foregroundColor(.white.opacity(0.85))
+            .padding(.horizontal, 10)
 
-            LogWheelView(
+            // 极影式半轮盘：沿弧线滑动，角度 → 对数变焦，连续跟手、
+            // 松手吸附档位；照片/视频/实况通用，录像中可实时变。
+            SemiWheelView(
                 value: zoomValue,
                 range: 0.5...500,
                 stops: stops,
@@ -190,19 +193,18 @@ private struct FineZoomRuler: View {
                     return "\(Int(v))"
                 },
                 onChange: { v in
-                    // 拖动连续逐帧下发，不再吸附整数。
                     cameraManager.setZoomFactor(CGFloat(v))
                 },
                 onCommit: { v in
                     cameraManager.flyZoom(to: CGFloat(v), duration: 0.18)
                 },
-                logarithmic: true,
                 haptic: { hapticEngine.selectionChanged() }
             )
         }
-        .padding(.horizontal, 12)
-        .padding(.vertical, 10)
-        .background(Color.black.opacity(0.35), in: RoundedRectangle(cornerRadius: 14))
+        .padding(.horizontal, 10)
+        .padding(.top, 6)
+        .padding(.bottom, 4)
+        .background(Color.black.opacity(0.35), in: RoundedRectangle(cornerRadius: 16))
     }
 }
 
