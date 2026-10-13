@@ -49,6 +49,16 @@ final class AppState: ObservableObject {
     @Published var liveEnhanceFrameCount: Int = 0
     @Published var liveEnhanceLatency: TimeInterval = 0
 
+    // MARK: - Live Vision AI（实时识别）
+    /// 实时识别到的主体框（归一化坐标，Vision 坐标系，左下原点）。
+    @Published var liveSubjects: [LiveSubject] = []
+    /// 实时场景标签（中文，用于 HUD）。
+    @Published var liveSceneLabel: String = ""
+    /// 实时视觉引擎每次分析的延迟。
+    @Published var liveVisionLatency: TimeInterval = 0
+    /// Live Vision 是否正在运行。
+    @Published var liveVisionActive: Bool = false
+
     private init() {}
 
     func setMode(_ mode: CaptureMode) {

@@ -9,6 +9,8 @@
 
 import SwiftUI
 import Photos
+import ImageIO
+import UniformTypeIdentifiers
 
 struct PhotoDetailView: View {
     let asset: PHAsset
@@ -20,6 +22,8 @@ struct PhotoDetailView: View {
     @State private var offset: CGSize = .zero
     @State private var lastOffset: CGSize = .zero
     @State private var showControls = true
+    @State private var showAIEditor = false
+    @State private var showCompare = false
 
     private let champagneGold = Color(red: 0.85, green: 0.75, blue: 0.55)
     private let imageManager = PHCachingImageManager()
@@ -51,6 +55,13 @@ struct PhotoDetailView: View {
             }
         }
         .onAppear { loadFullImage() }
+        .sheet(isPresented: $showAIEditor) {
+            NavigationStack {
+                AIEditorView(taskType: .superResolution, initialAsset: asset)
+                    .environmentObject(AppSettingsStore.shared)
+                    .environmentObject(AIProcessingQueue.shared)
+            }
+        }
     }
 
     // MARK: - Full Image
@@ -114,19 +125,33 @@ struct PhotoDetailView: View {
                         .background(Circle().fill(Color.white.opacity(0.15)))
                 }
                 Spacer()
-                NavigationLink {
-                    BeforeAfterCompare(asset: asset)
-                } label: {
-                    Image(systemName: "square.on.square")
-                        .font(.system(size: 16))
-                        .foregroundColor(.white)
-                        .padding(10)
-                        .background(Circle().fill(Color.white.opacity(0.15)))
+                HStack(spacing: 12) {
+                    Button {
+                        showAIEditor = true
+                    } label: {
+                        Image(systemName: "wand.and.stars")
+                            .font(.system(size: 16))
+                            .foregroundColor(.white)
+                            .padding(10)
+                            .background(Circle().fill(champagneGold.opacity(0.85)))
+                    }
+                    Button {
+                        showCompare = true
+                    } label: {
+                        Image(systemName: "square.on.square")
+                            .font(.system(size: 16))
+                            .foregroundColor(.white)
+                            .padding(10)
+                            .background(Circle().fill(Color.white.opacity(0.15)))
+                    }
                 }
             }
             .padding(.horizontal, 16)
             .padding(.top, 8)
             Spacer()
+        }
+        .sheet(isPresented: $showCompare) {
+            BeforeAfterCompare(asset: asset)
         }
     }
 
@@ -134,31 +159,52 @@ struct PhotoDetailView: View {
 
     private func loadFullImage() {
         isLoading = true
+        image = nil
+
         let options = PHImageRequestOptions()
         options.deliveryMode = .highQualityFormat
         options.resizeMode = .none
         options.isNetworkAccessAllowed = true
         options.isSynchronous = false
 
-        let targetSize = PHImageManagerMaximumSize
-        imageManager.requestImage(
-            for: asset,
-            targetSize: targetSize,
-            contentMode: .aspectFit,
-            options: options
-        ) { img, info in
-            // Ensure full-resolution load, not a degraded preview
-            let isDegraded = (info?[PHImageResultIsDegradedKey] as? Bool) ?? false
-            if let img = img, !isDegraded {
+        // 用原始数据 + ImageIO 缩略图解码，可靠避免：
+        // ① 只收到 degraded 帧后再也不回 full 帧导致永远黑屏；
+        // ② 超大照片（含 260MP）整图解码 OOM 黑屏。
+        // 显示用长边 4096 的缩略图，既清晰又稳；AI 超算时另行读取完整数据。
+        imageManager.requestImageDataAndOrientation(for: asset, options: options) { data, _, _, info in
+            let isCancelled = (info?[PHImageCancelledKey] as? Bool) ?? false
+            if let data = data, !isCancelled {
+                let display = Self.downsample(data: data, maxPixelSize: 4096)
                 DispatchQueue.main.async {
-                    self.image = img
+                    self.image = display
                     self.isLoading = false
+                }
+            } else if let error = info?[PHImageErrorKey] as? Error {
+                DispatchQueue.main.async {
+                    self.isLoading = false
+                    print("[PhotoDetail] 读取失败: \(error.localizedDescription)")
                 }
             }
         }
     }
+
+    /// ImageIO 边下边解码，生成方向正确、长边不超过 maxPixelSize 的预览图。
+    static func downsample(data: Data, maxPixelSize: CGFloat) -> UIImage? {
+        let srcOptions = [kCGImageSourceShouldCache: false] as CFDictionary
+        guard let source = CGImageSourceCreateWithData(data as CFData, srcOptions) else {
+            return UIImage(data: data)
+        }
+        let options = [
+            kCGImageSourceCreateThumbnailFromImageAlways: true,
+            kCGImageSourceCreateThumbnailWithTransform: true,
+            kCGImageSourceThumbnailMaxPixelSize: maxPixelSize,
+            kCGImageSourceShouldCacheImmediately: true
+        ] as [CFString: Any] as CFDictionary
+        guard let cg = CGImageSourceCreateThumbnailAtIndex(source, 0, options) else {
+            return UIImage(data: data)
+        }
+        return UIImage(cgImage: cg)
+    }
 }
 
-#Preview {
-    PhotoDetailView(asset: PHAsset())
-}
+// PHAsset 无公开构造器，详情页由相册列表传入真实 asset，故不提供 #Preview。

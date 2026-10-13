@@ -31,6 +31,9 @@ final class CameraManager: NSObject, ObservableObject {
     @Published var currentZoomFactor: CGFloat = 1.0
     @Published var zoomSource: ZoomSource = .optical
     @Published var usingFrontCamera = false
+    /// HUD 上显示的当前实际镜头（超广角 / 主摄 / 主摄 2× / 潜望长焦 / 数字）。
+    @Published var activeLensLabel: String = "主摄"
+    @Published var activeFocalText: String = "24mm"
 
     // MARK: - Private
 
@@ -161,44 +164,33 @@ final class CameraManager: NSObject, ObservableObject {
 
     // MARK: - Zoom mapping (display -> hardware)
 
-    /// On virtual multi-camera devices (triple / dual-wide) the hardware
-    /// `videoZoomFactor` is normalized with the ULTRA-WIDE lens at factor 1.0,
-    /// i.e. display 0.5× -> hardware 1.0, display 1× (main/wide) -> hardware 2.0,
-    /// display 2×/3× (tele) -> hardware 4.0/6.0. Passing the display factor
-    /// straight through is what previously made 0.5× and 1× both land on the
-    /// ultra-wide and only 2× reach the main lens. This multiplier corrects that.
-    private func virtualMultiplier(for device: AVCaptureDevice) -> CGFloat {
-        let hasUltraWide = device.constituentDevices.contains {
-            $0.deviceType == .builtInUltraWideCamera
+    /// 当前设备的镜头档案（16 Pro Max 校准）。所有倍率坐标都从设备真实的
+    /// virtualDeviceSwitchOverVideoZoomFactors 推导，不硬编码 ×2。
+    var lensProfile: DeviceLensProfile {
+        guard let device = currentDevice else {
+            return DeviceLensProfile(displayToHardware: 1, switchOverHardware: [],
+                                     isVirtual: false, maxHardwareDisplayZoom: 10,
+                                     isBack: !usingFrontCamera)
         }
-        guard hasUltraWide else { return 1.0 }
-        // minAvailableVideoZoomFactor is 1.0 on a virtual triple/dual-wide;
-        // display 0.5× maps to it.
-        return max(device.minAvailableVideoZoomFactor / 0.5, 1.0)
+        return DeviceLensProfile.profile(for: device, isBack: !usingFrontCamera)
     }
 
     /// Maps a display zoom factor (0.5 … 500) to the hardware
     /// `videoZoomFactor`, clamped to the device's real range.
     func hardwareZoomFactor(forDisplayZoom displayZoom: CGFloat) -> CGFloat {
         guard let device = currentDevice else { return 1.0 }
-        let mult = virtualMultiplier(for: device)
-        let minHW = device.minAvailableVideoZoomFactor
-        let maxHW = device.maxAvailableVideoZoomFactor
-        let hw = displayZoom * mult
-        return min(max(hw, minHW), maxHW)
+        return lensProfile.hardwareZoom(forDisplay: displayZoom, on: device)
     }
 
     /// Largest display zoom the hardware alone can reach on the active device.
     var maxHardwareDisplayZoom: CGFloat {
-        guard let device = currentDevice else { return 10 }
-        return max(device.maxAvailableVideoZoomFactor / virtualMultiplier(for: device), 1.0)
+        lensProfile.maxHardwareDisplayZoom
     }
 
     /// Additional software crop factor used once the hardware zoom is maxed.
     /// Returned in DISPLAY space so the UI always reaches 500×.
     func digitalCropFactor(forDisplayZoom displayZoom: CGFloat) -> CGFloat {
-        let maxDisplay = maxHardwareDisplayZoom
-        return displayZoom > maxDisplay ? displayZoom / maxDisplay : 1.0
+        lensProfile.digitalCrop(forDisplay: displayZoom)
     }
 
     /// Digital crop factor for the most recently requested display zoom —
@@ -208,13 +200,11 @@ final class CameraManager: NSObject, ObservableObject {
     func zoomSource(forDisplayZoom displayZoom: CGFloat) -> ZoomSource {
         if displayZoom >= 100 { return .ai }
         if displayZoom > maxHardwareDisplayZoom { return .digital }
-        guard let device = currentDevice else { return .optical }
-        let mult = virtualMultiplier(for: device)
-        let hw = displayZoom * mult
-        let switches = DeviceCapabilityManager.shared.switchOverFactors
-        // Up to the first hardware switch-over point is a single native lens.
-        if hw <= (switches.first ?? 2.0) { return .optical }
-        return .hybrid
+        // 镜头切换点之前都是真实光学镜头；主摄 2× 传感器裁切与跨焦段之间标混合。
+        switch lensProfile.activeLens(forDisplay: displayZoom) {
+        case .wideCrop2x, .telephoto: return .hybrid
+        default: return .optical
+        }
     }
 
     /// Set the hardware videoZoomFactor while the device is already locked.
@@ -225,6 +215,7 @@ final class CameraManager: NSObject, ObservableObject {
             try device.lockForConfiguration()
             device.videoZoomFactor = hw
             device.unlockForConfiguration()
+            publishLensState(displayZoom)
         } catch {
             health.recordStartupFailure(error)
         }
@@ -250,8 +241,10 @@ final class CameraManager: NSObject, ObservableObject {
             self.applyDigitalCrop(crop)
             DispatchQueue.main.async {
                 self.currentZoomFactor = clamped
-                self.zoomSource = self.zoomSource(forDisplayZoom: clamped)
-                AppState.shared.setZoom(Double(clamped), source: self.zoomSource)
+                let src = self.zoomSource(forDisplayZoom: clamped)
+                self.zoomSource = src
+                self.publishLensState(clamped)
+                AppState.shared.setZoom(Double(clamped), source: src)
             }
         }
     }
@@ -276,10 +269,25 @@ final class CameraManager: NSObject, ObservableObject {
             self.applyDigitalCrop(crop)
             DispatchQueue.main.async {
                 self.currentZoomFactor = clamped
-                self.zoomSource = self.zoomSource(forDisplayZoom: clamped)
-                AppState.shared.setZoom(Double(clamped), source: self.zoomSource)
+                let src = self.zoomSource(forDisplayZoom: clamped)
+                self.zoomSource = src
+                self.publishLensState(clamped)
+                AppState.shared.setZoom(Double(clamped), source: src)
             }
         }
+    }
+
+    /// 刷新当前实际镜头名/焦距，供 HUD 显示，确保 0.5/1/2/5 走对镜头。
+    /// 无论从哪个队列调用都切回主线程更新 @Published。
+    private func publishLensState(_ display: CGFloat) {
+        let profile = lensProfile
+        let lens = profile.activeLens(forDisplay: display)
+        let focal = profile.focalLengthText(forDisplay: display)
+        let apply = {
+            self.activeLensLabel = lens.shortName
+            self.activeFocalText = focal
+        }
+        if Thread.isMainThread { apply() } else { DispatchQueue.main.async(execute: apply) }
     }
 
     /// Scale the preview layer itself for the all-digital zone (>hardware max).
@@ -398,10 +406,25 @@ extension CameraManager: AVCaptureVideoDataOutputSampleBufferDelegate {
         guard let pixelBuffer = CMSampleBufferGetImageBuffer(sampleBuffer) else { return }
         let ciImage = CIImage(cvPixelBuffer: pixelBuffer)
         let result = LiveDetailEngine.shared.enhance(image: ciImage, level: level)
+
+        // Live Vision AI：实时识别主体/场景（人脸/人体/动物/文字/YOLO/场景分类）。
+        // 识别在低分辨率帧上进行，轮询高耗时请求，避免发热拖慢预览。
+        let isFront = self.usingFrontCamera
+        let vision = LiveVisionEngine.shared.analyze(
+            pixelBuffer: pixelBuffer,
+            orientation: isFront ? .leftMirrored : .right,
+            level: level
+        )
+
         // Keep the badge honest: the live engine is now actually receiving frames.
         DispatchQueue.main.async {
-            AppState.shared.liveEnhanceFrameCount += 1
-            AppState.shared.liveEnhanceLatency = result.latency
+            let app = AppState.shared
+            app.liveEnhanceFrameCount += 1
+            app.liveEnhanceLatency = result.latency
+            app.liveVisionActive = true
+            app.liveVisionLatency = vision.latency
+            app.liveSubjects = vision.subjects
+            if !vision.sceneLabel.isEmpty { app.liveSceneLabel = vision.sceneLabel }
         }
     }
 }

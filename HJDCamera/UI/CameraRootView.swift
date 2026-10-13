@@ -29,6 +29,12 @@ struct CameraRootView: View {
                     .environmentObject(settingsStore)
                     .ignoresSafeArea()
 
+                // Live Vision AI overlay: recognition boxes + scene/lens chips.
+                LiveVisionHUD()
+                    .environmentObject(appState)
+                    .environmentObject(cameraManager)
+                    .ignoresSafeArea()
+
                 // Foreground UI layered over the preview. Controls stay inside
                 // the safe area so the Dynamic Island never covers them.
                 VStack(spacing: 0) {
