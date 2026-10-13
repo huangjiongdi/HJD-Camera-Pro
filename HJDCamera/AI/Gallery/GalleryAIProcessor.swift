@@ -66,7 +66,10 @@ final class GalleryAIProcessor {
         let targetSize = resolveTargetSize(src: srcSize, targetMP: targetMP, scale: scale)
 
         // 路由到真实模型
-        let route = AISceneRouter.route(task: task) ?? AISceneRouter.route(task: .superResolution)
+        let route = AISceneRouter.route(task: task)
+            ?? AISceneRouter.route(task: .superResolution)
+            ?? AISceneRoute(modelID: "realesrgan512", isSuperResolution: true,
+                           displayName: "通用超分", note: "")
         let (resolvedID, routeWarning) = AISceneRouter.resolveAvailable(route)
         let modelID = resolvedID ?? "none"
         let modelAvailable = resolvedID != nil
